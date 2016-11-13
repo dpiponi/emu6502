@@ -39,6 +39,12 @@ data State6502 = S {
 
 makeLenses ''State6502
 
+writeRAM :: IOUArray Int Word8 -> Int -> Word8 -> StateT State6502 IO ()
+writeRAM m addr b = liftIO $ writeArray m addr b
+
+readRAM :: IOUArray Int Word8 -> Int -> StateT State6502 IO Word8
+readRAM m addr = liftIO $ readArray m addr
+
 flagC :: Lens' Registers Bool
 flagC = p . bitAt 0
 
@@ -82,13 +88,23 @@ dumpRegisters = do
     regY <- use (regs . y)
     liftIO $ putStrLn $ " Y = " ++ showHex regY ""
 
+readMemory :: Int -> StateT State6502 IO Word8
+readMemory addr = do
+    m <- use mem
+    liftIO $ readArray m addr
+
+writeMemory :: Int -> Word8 -> StateT State6502 IO ()
+writeMemory addr v = do
+    m <- use mem
+    liftIO $ writeArray m addr v
+
 dumpMemory :: StateT State6502 IO ()
 dumpMemory = do
     regPC <- use (regs . pc)
-    m <- use mem
-    b0 <- liftIO $ readArray m (fromIntegral regPC)
-    b1 <- liftIO $ readArray m (fromIntegral regPC+1)
-    b2 <- liftIO $ readArray m (fromIntegral regPC+2)
+    --m <- use memg
+    b0 <- readMemory (fromIntegral regPC)
+    b1 <- readMemory (fromIntegral regPC+1)
+    b2 <- readMemory (fromIntegral regPC+2)
     liftIO $ putStr $ "(PC) = "
     liftIO $ putStr $ showHex b0 "" ++ " "
     liftIO $ putStr $ showHex b1 "" ++ " "
@@ -101,16 +117,16 @@ dumpState = do
 
 read16 :: Word16 -> StateT State6502 IO Word16
 read16 addr = do
-    m <- use mem
-    lo <- liftIO $ readArray m (fromIntegral addr)
-    hi <- liftIO $ readArray m (fromIntegral addr+1)
+    --m <- use memg
+    lo <- readMemory (fromIntegral addr)
+    hi <- readMemory (fromIntegral addr+1)
     return $ (fromIntegral hi `shift` 8)+fromIntegral lo
 
 read16zp :: Word8 -> StateT State6502 IO Word16
 read16zp addr = do
-    m <- use mem
-    lo <- liftIO $ readArray m (fromIntegral addr)
-    hi <- liftIO $ readArray m (fromIntegral (addr+1))
+    --m <- use memg
+    lo <- readMemory (fromIntegral addr)
+    hi <- readMemory (fromIntegral (addr+1))
     return $ (fromIntegral hi `shift` 8)+fromIntegral lo
 
 -- http://www.emulator101.com/6502-addressing-modes.html
@@ -123,22 +139,22 @@ i16 = fromIntegral
 
 putData :: Word8 -> Word8 -> StateT State6502 IO ()
 putData bbb src = do
-    m <- use mem
+    --m <- use memg
     p0 <- use (regs . pc)
     case bbb of
         -- (zero page, X)
         0b000 -> do
             offsetX <- use (regs . x)
-            zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+            zpAddr <- readMemory (fromIntegral (p0+1))
             let addrAddr = zpAddr+offsetX :: Word8
             addr <- read16zp addrAddr
-            liftIO $ writeArray m (fromIntegral addr) src
+            writeMemory (fromIntegral addr) src
             regs . pc .= p0+2
             clock += 6
         -- zero page
         0b001 -> do
-            addr <- liftIO $ readArray m (fromIntegral (p0+1))
-            liftIO $ writeArray m (fromIntegral addr) src
+            addr <- readMemory (fromIntegral (p0+1))
+            writeMemory (fromIntegral addr) src
             regs . pc .= p0+2
             clock += 3
         -- immediate
@@ -146,28 +162,28 @@ putData bbb src = do
             error "Can't store immediate"
         -- absolute
         0b011 -> do
-            lo <- liftIO $ readArray m (fromIntegral (p0+1))
-            hi <- liftIO $ readArray m (fromIntegral (p0+2))
+            lo <- readMemory (fromIntegral (p0+1))
+            hi <- readMemory (fromIntegral (p0+2))
             let addr = (hi `shift` 8)+lo
-            liftIO $ writeArray m (fromIntegral addr) src
+            writeMemory (fromIntegral addr) src
             regs . pc .= p0+3
             clock += 4
         -- (zero page), Y
         0b100 -> do
             offsetY <- use (regs . y)
-            zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+            zpAddr <- readMemory (fromIntegral (p0+1))
             addr <- read16zp zpAddr
             let newAddr = addr+fromIntegral offsetY :: Word16
             let carry = (newAddr .&. 0xff00) /= (addr .&. 0xff00)
-            liftIO $ writeArray m (fromIntegral addr+fromIntegral offsetY) src
+            writeMemory (fromIntegral addr+fromIntegral offsetY) src
             regs . pc .= p0+2
             clock += 6
         -- zero page, X
         0b101 -> do
             offsetX <- use (regs . x)
-            zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+            zpAddr <- readMemory (fromIntegral (p0+1))
             let addrAddr = zpAddr+offsetX :: Word8
-            liftIO $ writeArray m (fromIntegral addrAddr) src
+            writeMemory (fromIntegral addrAddr) src
             regs . pc .= p0+2
             clock += 4
         -- absolute, Y
@@ -176,7 +192,7 @@ putData bbb src = do
             baseAddr <- read16 (fromIntegral (p0+1))
             let addr = baseAddr+fromIntegral offsetY :: Word16
             let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-            liftIO $ writeArray m (fromIntegral addr) src
+            writeMemory (fromIntegral addr) src
             regs . pc .= p0+3
             clock += 5
         -- absolute, X
@@ -185,7 +201,7 @@ putData bbb src = do
             baseAddr <- read16 (fromIntegral (p0+1))
             let addr = baseAddr+fromIntegral offsetX :: Word16
             let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-            liftIO $ writeArray m (fromIntegral addr) src
+            writeMemory (fromIntegral addr) src
             regs . pc .= p0+3
             clock += 5
 
@@ -193,89 +209,89 @@ getData :: Word8 -> StateT State6502 IO Word8
 getData bbb = case bbb of
     -- (zero page, X)
     0b000 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- use (regs . x)
-        zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+        zpAddr <- readMemory (fromIntegral (p0+1))
         let addrAddr = zpAddr+offsetX :: Word8
         addr <- read16zp addrAddr
-        src <- liftIO $ readArray m (fromIntegral addr)
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+2
         clock += 6
         return src
     -- zero page
     0b001 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
-        addr <- liftIO $ readArray m (fromIntegral (p0+1))
-        src <- liftIO $ readArray m (fromIntegral addr)
+        addr <- readMemory (fromIntegral (p0+1))
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+2
         clock += 3
         return src
     -- immediate
     0b010 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
-        src <- liftIO $ readArray m (fromIntegral (p0+1))
+        src <- readMemory (fromIntegral (p0+1))
         regs . pc .= p0+2
         clock += 2
         return src
     -- absolute
     0b011 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
-        lo <- liftIO $ readArray m (fromIntegral (p0+1))
-        hi <- liftIO $ readArray m (fromIntegral (p0+2))
+        lo <- readMemory (fromIntegral (p0+1))
+        hi <- readMemory (fromIntegral (p0+2))
         let addr = (hi `shift` 8)+lo
-        src <- liftIO $ readArray m (fromIntegral addr)
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+3
         clock += 4
         return src
     -- (zero page), Y
     0b100 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
         offsetY <- use (regs . y)
-        zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+        zpAddr <- readMemory (fromIntegral (p0+1))
         addr <- read16zp zpAddr
         let newAddr = addr+fromIntegral offsetY :: Word16
         let carry = (newAddr .&. 0xff00) /= (addr .&. 0xff00)
-        src <- liftIO $ readArray m (fromIntegral addr+fromIntegral offsetY)
+        src <- readMemory (fromIntegral addr+fromIntegral offsetY)
         regs . pc .= p0+2
         clock += if carry then 6 else 5
         return src
     -- zero page, X
     0b101 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- use (regs . x)
-        zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+        zpAddr <- readMemory (fromIntegral (p0+1))
         let addrAddr = zpAddr+offsetX :: Word8
-        src <- liftIO $ readArray m (fromIntegral addrAddr)
+        src <- readMemory (fromIntegral addrAddr)
         regs . pc .= p0+2
         clock += 4
         return src
     -- absolute, Y
     0b110 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
         offsetY <- use (regs . y)
         baseAddr <- read16 (fromIntegral (p0+1))
         let addr = baseAddr+fromIntegral offsetY :: Word16
         let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-        src <- liftIO $ readArray m (fromIntegral addr)
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+3
         clock += if carry then 5 else 4
         return src
     -- absolute, X
     0b111 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- use (regs . x)
         baseAddr <- read16 (fromIntegral (p0+1))
         let addr = baseAddr+fromIntegral offsetX :: Word16
         let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-        src <- liftIO $ readArray m (fromIntegral addr)
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+3
         clock += if carry then 5 else 4
         return src
@@ -283,14 +299,14 @@ getData bbb = case bbb of
 {-# INLINE ins_bra #-}
 ins_bra :: Lens' Registers Bool -> Bool -> StateT State6502 IO ()
 ins_bra flag value = do
-    m <- use mem
+    --m <- use memg
     f <- use (regs . flag)
     p0 <- use (regs . pc)
     let oldP = p0+2
     if value && f || not value && not f
         then do
             liftIO $ print "Taking branch"
-            offset <- liftIO $ readArray m (fromIntegral (p0+1)) -- XXX or ^^^
+            offset <- readMemory (fromIntegral (p0+1)) -- XXX or ^^^
             let newP = if offset < 0x80 then oldP+i16 offset else oldP+i16 offset-0x100
             clock += if newP .&. 0xff00 == oldP .&. 0xff00 then 3 else 4
             regs . pc .= newP
@@ -314,7 +330,7 @@ ins_nop = do
 {-# INLINE ins_jmp #-}
 ins_jmp :: Word8 -> StateT State6502 IO ()
 ins_jmp _ = do
-    m <- use mem
+    --m <- use memg
     p0 <- use (regs . pc)
     addr <- read16 (p0+1)
     regs . pc .= addr
@@ -323,7 +339,7 @@ ins_jmp _ = do
 {-# INLINE ins_jmp_indirect #-}
 ins_jmp_indirect :: Word8 -> StateT State6502 IO ()
 ins_jmp_indirect _ = do
-    m <- use mem
+    --m <- use memg
     p0 <- use (regs . pc)
     addrAddr <- read16 (p0+1)
     addr <- read16 addrAddr
@@ -337,9 +353,9 @@ withData01 :: Word8 -> Bool -> Bool ->
 withData01 bbb write useY op = case bbb of
     -- immediate
     0b000 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
-        src <- liftIO $ readArray m (fromIntegral (p0+1))
+        src <- readMemory (fromIntegral (p0+1))
         regs . pc .= p0+2
         op src
         if write
@@ -347,15 +363,15 @@ withData01 bbb write useY op = case bbb of
             else clock += 2
     -- zero page
     0b001 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
-        addr <- liftIO $ readArray m (fromIntegral (p0+1))
-        src <- liftIO $ readArray m (fromIntegral addr)
+        addr <- readMemory (fromIntegral (p0+1))
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+2
         dst <- op src
         if write
             then do
-                liftIO $ writeArray m (fromIntegral addr) dst
+                writeMemory (fromIntegral addr) dst
                 clock += 5
             else
                 clock += 3
@@ -371,48 +387,48 @@ withData01 bbb write useY op = case bbb of
             else error "Must write back to A"
     -- absolute
     0b011 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
-        lo <- liftIO $ readArray m (fromIntegral (p0+1))
-        hi <- liftIO $ readArray m (fromIntegral (p0+2))
+        lo <- readMemory (fromIntegral (p0+1))
+        hi <- readMemory (fromIntegral (p0+2))
         let addr = (hi `shift` 8)+lo
-        src <- liftIO $ readArray m (fromIntegral addr)
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+3
         dst <- op src
         if write
             then do
-                liftIO $ writeArray m (fromIntegral addr) dst
+                writeMemory (fromIntegral addr) dst
                 clock += 6
             else clock += 4
     -- zero page, X
     0b101 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- if useY then use (regs . y) else use (regs . x)
-        zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+        zpAddr <- readMemory (fromIntegral (p0+1))
         let addr = zpAddr+offsetX :: Word8
-        src <- liftIO $ readArray m (fromIntegral addr)
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+2
         dst <- op src
         if write
             then do
-                liftIO $ writeArray m (fromIntegral addr) dst
+                writeMemory (fromIntegral addr) dst
                 clock += 6
             else clock += 4
     -- absolute, X
     0b111 -> do
-        m <- use mem
+        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- if useY then use (regs . y) else use (regs . x)
         baseAddr <- read16 (fromIntegral (p0+1))
         let addr = baseAddr+fromIntegral offsetX :: Word16
         let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-        src <- liftIO $ readArray m (fromIntegral addr)
+        src <- readMemory (fromIntegral addr)
         regs . pc .= p0+3
         dst <- op src
         if write
             then do
-                liftIO $ writeArray m (fromIntegral addr) dst
+                writeMemory (fromIntegral addr) dst
                 clock += 7
             else
                 clock += if carry then 5 else 4
@@ -675,17 +691,17 @@ irq = do
 
 push :: Word8 -> StateT State6502 IO ()
 push v = do
-    m <- use mem
+    --m <- use memg
     sp <- use (regs . s)
-    liftIO $ writeArray m (0x100+fromIntegral sp) v
+    writeMemory (0x100+fromIntegral sp) v
     regs . s -= 1
 
 pull :: StateT State6502 IO Word8
 pull = do
-    m <- use mem
+    --m <- use memg
     regs . s += 1
     sp <- use (regs . s)
-    liftIO $ readArray m (0x100+fromIntegral sp)
+    readMemory (0x100+fromIntegral sp)
 
 ins_push :: Lens' Registers Word8 -> StateT State6502 IO ()
 ins_push v = do
@@ -703,7 +719,7 @@ ins_pull v = do
 
 nmi :: Bool -> StateT State6502 IO ()
 nmi sw = do
-    m <- use mem
+    --m <- use memg
     p0 <- use (regs . pc)
     push (i8 (p0 `shift` (-8)))
     push (i8 (p0 .&. 0xff))
@@ -745,10 +761,10 @@ step :: StateT State6502 IO ()
 step = do
     liftIO $ print "------"
     dumpState
-    m <- use mem
+    --m <- use memg
     p0 <- use (regs . pc)
     liftIO $ print $ "pc = " ++ showHex p0 ""
-    i <- liftIO $ readArray m (fromIntegral p0)
+    i <- readMemory (fromIntegral p0)
     liftIO $ print $ "instruction = " ++ showHex i ""
     case i of
         0x00 -> ins_brk
