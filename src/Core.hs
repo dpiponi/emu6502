@@ -113,84 +113,79 @@ read16zp addr = do
 
 -- http://www.emulator101.com/6502-addressing-modes.html
 
+i8 :: Integral a => a -> Word8
+i8 = fromIntegral
+
+i16 :: Integral a => a -> Word16
+i16 = fromIntegral
+
 putData :: Word8 -> Word8 -> StateT State6502 IO ()
-putData bbb src = case bbb of
-    -- (zero page, X)
-    0b000 -> do
-        m <- use mem
-        p0 <- use (regs . pc)
-        offsetX <- use (regs . x)
-        zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
-        let addrAddr = zpAddr+offsetX :: Word8
-        addr <- read16zp addrAddr
-        liftIO $ writeArray m (fromIntegral addr) src
-        regs . pc .= p0+2
-        clock += 6
-    -- zero page
-    0b001 -> do
-        m <- use mem
-        p0 <- use (regs . pc)
-        addr <- liftIO $ readArray m (fromIntegral (p0+1))
-        liftIO $ writeArray m (fromIntegral addr) src
-        regs . pc .= p0+2
-        clock += 3
-    -- immediate
-    0b010 -> do
-        error "Can't store immediate"
-    -- absolute
-    0b011 -> do
-        m <- use mem
-        p0 <- use (regs . pc)
-        lo <- liftIO $ readArray m (fromIntegral (p0+1))
-        hi <- liftIO $ readArray m (fromIntegral (p0+2))
-        let addr = (hi `shift` 8)+lo
-        liftIO $ writeArray m (fromIntegral addr) src
-        regs . pc .= p0+3
-        clock += 4
-    -- (zero page), Y
-    0b100 -> do
-        m <- use mem
-        p0 <- use (regs . pc)
-        offsetY <- use (regs . y)
-        zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
-        addr <- read16zp zpAddr
-        let newAddr = addr+fromIntegral offsetY :: Word16
-        let carry = (newAddr .&. 0xff00) /= (addr .&. 0xff00)
-        liftIO $ writeArray m (fromIntegral addr+fromIntegral offsetY) src
-        regs . pc .= p0+2
-        clock += 6
-    -- zero page, X
-    0b101 -> do
-        m <- use mem
-        p0 <- use (regs . pc)
-        offsetX <- use (regs . x)
-        zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
-        let addrAddr = zpAddr+offsetX :: Word8
-        liftIO $ writeArray m (fromIntegral addrAddr) src
-        regs . pc .= p0+2
-        clock += 4
-    -- absolute, Y
-    0b110 -> do
-        m <- use mem
-        p0 <- use (regs . pc)
-        offsetY <- use (regs . y)
-        baseAddr <- read16 (fromIntegral (p0+1))
-        let addr = baseAddr+fromIntegral offsetY :: Word16
-        let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-        liftIO $ writeArray m (fromIntegral addr) src
-        regs . pc .= p0+3
-        clock += 5
-    -- absolute, X
-    0b111 -> do
-        m <- use mem
-        p0 <- use (regs . pc)
-        offsetX <- use (regs . x)
-        baseAddr <- read16 (fromIntegral (p0+1))
-        let addr = baseAddr+fromIntegral offsetX :: Word16
-        let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-        liftIO $ writeArray m (fromIntegral addr) src
-        regs . pc .= p0+3
-        clock += 5
+putData bbb src = do
+    m <- use mem
+    p0 <- use (regs . pc)
+    case bbb of
+        -- (zero page, X)
+        0b000 -> do
+            offsetX <- use (regs . x)
+            zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+            let addrAddr = zpAddr+offsetX :: Word8
+            addr <- read16zp addrAddr
+            liftIO $ writeArray m (fromIntegral addr) src
+            regs . pc .= p0+2
+            clock += 6
+        -- zero page
+        0b001 -> do
+            addr <- liftIO $ readArray m (fromIntegral (p0+1))
+            liftIO $ writeArray m (fromIntegral addr) src
+            regs . pc .= p0+2
+            clock += 3
+        -- immediate
+        0b010 -> do
+            error "Can't store immediate"
+        -- absolute
+        0b011 -> do
+            lo <- liftIO $ readArray m (fromIntegral (p0+1))
+            hi <- liftIO $ readArray m (fromIntegral (p0+2))
+            let addr = (hi `shift` 8)+lo
+            liftIO $ writeArray m (fromIntegral addr) src
+            regs . pc .= p0+3
+            clock += 4
+        -- (zero page), Y
+        0b100 -> do
+            offsetY <- use (regs . y)
+            zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+            addr <- read16zp zpAddr
+            let newAddr = addr+fromIntegral offsetY :: Word16
+            let carry = (newAddr .&. 0xff00) /= (addr .&. 0xff00)
+            liftIO $ writeArray m (fromIntegral addr+fromIntegral offsetY) src
+            regs . pc .= p0+2
+            clock += 6
+        -- zero page, X
+        0b101 -> do
+            offsetX <- use (regs . x)
+            zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
+            let addrAddr = zpAddr+offsetX :: Word8
+            liftIO $ writeArray m (fromIntegral addrAddr) src
+            regs . pc .= p0+2
+            clock += 4
+        -- absolute, Y
+        0b110 -> do
+            offsetY <- use (regs . y)
+            baseAddr <- read16 (fromIntegral (p0+1))
+            let addr = baseAddr+fromIntegral offsetY :: Word16
+            let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
+            liftIO $ writeArray m (fromIntegral addr) src
+            regs . pc .= p0+3
+            clock += 5
+        -- absolute, X
+        0b111 -> do
+            offsetX <- use (regs . x)
+            baseAddr <- read16 (fromIntegral (p0+1))
+            let addr = baseAddr+fromIntegral offsetX :: Word16
+            let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
+            liftIO $ writeArray m (fromIntegral addr) src
+            regs . pc .= p0+3
+            clock += 5
 
 getData :: Word8 -> StateT State6502 IO Word8
 getData bbb = case bbb of
@@ -466,19 +461,23 @@ ins_sbc bbb = do
 
 ins_asl :: Word8 -> StateT State6502 IO ()
 ins_asl bbb = withData01 bbb True False $ \src -> do
+    liftIO $ print $ "into asl = " ++ show src
     regs . flagC .= (src .&. 0x80 > 0)
     let new = src `shift` 1
     regs . flagS .= (new .&. 0x80 > 0)
     regs . flagZ .= (new == 0)
+    liftIO $ print $ "out of asl = " ++ show new
     return new
 
 ins_rol :: Word8 -> StateT State6502 IO ()
 ins_rol bbb = withData01 bbb True False $ \src -> do
+    liftIO $ print $ "into rol = " ++ show src
     fc <- use (regs . flagC)
     regs . flagC .= (src .&. 0x80 > 0)
     let new = (src `shift` 1) + if fc then 1 else 0
     regs . flagS .= (new .&. 0x80 > 0)
     regs . flagZ .= (new == 0)
+    liftIO $ print $ "out of rol = " ++ show new
     return new
 
 ins_lsr :: Word8 -> StateT State6502 IO ()

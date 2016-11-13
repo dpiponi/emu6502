@@ -134,10 +134,10 @@ test5 = do
 
 test6 = do
     let ins = [
-            0x2e, 0x0c, 0x00,   -- LDA DATA1
-            0x2e, 0x0d, 0x00,   -- LDA DATA2
-            0x2e, 0x0e, 0x00,   -- LDA DATA3
-            0x2e, 0x0f, 0x00,   -- LDA DATA4
+            0x2e, 0x0c, 0x00,   -- ROL DATA1
+            0x2e, 0x0d, 0x00,   -- ROL DATA2
+            0x2e, 0x0e, 0x00,   -- ROL DATA3
+            0x2e, 0x0f, 0x00,   -- ROL DATA4
             0x78,               -- DATA1: .BYTE $78
             0x56,               -- DATA1: .BYTE $56
             0x34,               -- DATA1: .BYTE $34
@@ -155,10 +155,10 @@ test6 = do
     m2 <- readArray m 0xd
     m3 <- readArray m 0xe
     m4 <- readArray m 0xf
-    assertEqual "m1 == 0x24" m1 0x24
-    assertEqual "m2 == 0x68" m1 0x68
-    assertEqual "m3 == 0xac" m1 0xac
     assertEqual "m4 == 0xf0" m1 0xf0
+    assertEqual "m3 == 0xac" m2 0xac
+    assertEqual "m2 == 0x68" m3 0x68
+    assertEqual "m1 == 0x24" m4 0x24
     assertEqual "clock == 24" (state' ^. clock) 24
 -- 2468ACF0
 
