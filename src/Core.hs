@@ -278,6 +278,23 @@ getData bbb = case bbb of
         clock += if carry then 5 else 4
         return src
 
+ins_jmp :: Word8 -> StateT State6502 IO ()
+ins_jmp _ = do
+    m <- use mem
+    p0 <- use (regs . pc)
+    addr <- read16 (p0+1)
+    regs . pc .= addr
+    clock += 3
+
+ins_jmp_indirect :: Word8 -> StateT State6502 IO ()
+ins_jmp_indirect _ = do
+    m <- use mem
+    p0 <- use (regs . pc)
+    addrAddr <- read16 (p0+1)
+    addr <- read16 addrAddr
+    regs . pc .= addr
+    clock += 5
+
 -- Need to separate R/W/RW XXX
 withData01 :: Word8 -> Bool -> Bool ->
               (Word8 -> StateT State6502 IO Word8) ->
@@ -288,8 +305,8 @@ withData01 bbb write useY op = case bbb of
         m <- use mem
         p0 <- use (regs . pc)
         src <- liftIO $ readArray m (fromIntegral (p0+1))
-        op src
         regs . pc .= p0+2
+        op src
         if write
             then error "Can't write immediate"
             else clock += 2
@@ -299,6 +316,7 @@ withData01 bbb write useY op = case bbb of
         p0 <- use (regs . pc)
         addr <- liftIO $ readArray m (fromIntegral (p0+1))
         src <- liftIO $ readArray m (fromIntegral addr)
+        regs . pc .= p0+2
         dst <- op src
         if write
             then do
@@ -306,14 +324,13 @@ withData01 bbb write useY op = case bbb of
                 clock += 5
             else
                 clock += 3
-        regs . pc .= p0+2
     -- accumulator -- XXX
     0b010 -> do
         p0 <- use (regs . pc)
         src <- use (regs . a)
+        regs . pc .= p0+1
         dst <- op src
         regs . a .= dst
-        regs . pc .= p0+1
         if write
             then clock += 2
             else error "Must write back to A"
@@ -325,8 +342,8 @@ withData01 bbb write useY op = case bbb of
         hi <- liftIO $ readArray m (fromIntegral (p0+2))
         let addr = (hi `shift` 8)+lo
         src <- liftIO $ readArray m (fromIntegral addr)
-        dst <- op src
         regs . pc .= p0+3
+        dst <- op src
         if write
             then do
                 liftIO $ writeArray m (fromIntegral addr) dst
@@ -340,8 +357,8 @@ withData01 bbb write useY op = case bbb of
         zpAddr <- liftIO $ readArray m (fromIntegral (p0+1))
         let addr = zpAddr+offsetX :: Word8
         src <- liftIO $ readArray m (fromIntegral addr)
-        dst <- op src
         regs . pc .= p0+2
+        dst <- op src
         if write
             then do
                 liftIO $ writeArray m (fromIntegral addr) dst
@@ -356,8 +373,8 @@ withData01 bbb write useY op = case bbb of
         let addr = baseAddr+fromIntegral offsetX :: Word16
         let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
         src <- liftIO $ readArray m (fromIntegral addr)
-        dst <- op src
         regs . pc .= p0+3
+        dst <- op src
         if write
             then do
                 liftIO $ writeArray m (fromIntegral addr) dst
@@ -521,6 +538,41 @@ ins_inc bbb = withData01 bbb True False $ \src -> do
     regs . flagZ .= (new == 0)
     return new
 
+ins_bit :: Word8 -> StateT State6502 IO ()
+ins_bit bbb = withData01 bbb False False $ \src -> do
+    regs . flagS .= (src .&. 0x80 > 0)
+    regs . flagV .= (src .&. 0x40 > 0)
+    regs . flagZ .= (src == 0)
+    return 0 -- unused
+
+ins_sty :: Word8 -> StateT State6502 IO ()
+ins_sty bbb = withData01 bbb True False $ \src -> do
+    new <- use (regs . y)
+    return new
+
+ins_ldy :: Word8 -> StateT State6502 IO ()
+ins_ldy bbb = withData01 bbb False False $ \src -> do
+    regs . y .= src
+    return 0 -- Unused, I hope
+
+ins_cpx :: Word8 -> StateT State6502 IO ()
+ins_cpx bbb = withData01 bbb False False $ \src -> do
+    rx <- use (regs . x)
+    let new = i16 rx-i16 src
+    regs . flagS .= (src .&. 0x80 > 0)
+    regs . flagC .= (new < 0x100)
+    regs . flagZ .= (new .&. 0xff == 0)
+    return 0 -- unused
+
+ins_cpy :: Word8 -> StateT State6502 IO ()
+ins_cpy bbb = withData01 bbb False False $ \src -> do
+    ry <- use (regs . y)
+    let new = i16 ry-i16 src
+    regs . flagS .= (src .&. 0x80 > 0)
+    regs . flagC .= (new < 0x100)
+    regs . flagZ .= (new .&. 0xff == 0)
+    return 0 -- unused
+
 step :: StateT State6502 IO ()
 step = do
     liftIO $ print "------"
@@ -533,25 +585,31 @@ step = do
     let cc = i .&. 0b11
     liftIO $ print $ "cc = " ++ show cc
     case cc of
+        0b00 -> do
+            liftIO $ print "cc=0b00 instruction"
+            let aaa = (i `shift` (-5)) .&. 0b111
+            let bbb = (i `shift` (-2)) .&. 0b111
+            case aaa of
+                0b001 -> ins_bit bbb
+                0b010 -> ins_jmp bbb
+                0b011 -> ins_jmp_indirect bbb
+                0b100 -> ins_sty bbb
+                0b101 -> ins_ldy bbb
+                0b110 -> ins_cpy bbb
+                0b111 -> ins_cpx bbb
+
         0b01 -> do
             liftIO $ print "0b01 instruction"
             let aaa = (i `shift` (-5)) .&. 0b111
             let bbb = (i `shift` (-2)) .&. 0b111
             case aaa of
 
-                -- ORA
                 0b000 -> ins_ora bbb
-                -- AND
                 0b001 -> ins_and bbb
-                -- EOR
                 0b010 -> ins_xor bbb
-                -- ADC
                 0b011 -> ins_adc bbb
-                -- LDA
                 0b101 -> ins_lda bbb
-                -- STA
                 0b100 -> ins_sta bbb
-                -- SBC
                 0b111 -> ins_sbc bbb
 
                 otherwise -> error "Unknown aaa"
@@ -561,22 +619,15 @@ step = do
             let bbb = (i `shift` (-2)) .&. 0b111
             case aaa of
 
-                -- ASL
                 0b000 -> ins_asl bbb
-                -- ROL
                 0b001 -> ins_rol bbb
-                -- LSR
                 0b010 -> ins_lsr bbb
-                -- ROR
                 0b011 -> ins_ror bbb
-                -- STX
                 0b100 -> ins_stx bbb
-                -- LDX
                 0b101 -> ins_ldx bbb
-                -- DEC
                 0b110 -> ins_dec bbb
-                -- INC
                 0b111 -> ins_inc bbb
+
         otherwise -> error "Unknown instruction class (cc)"
     dumpState
     return ()
