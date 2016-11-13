@@ -41,6 +41,7 @@ executable emu6502-exe
                      , lens
                      , binary
                      , emu6502
+                     , cmdargs
   default-language:    Haskell2010
 
 test-suite emu6502-test

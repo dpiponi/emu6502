@@ -22,7 +22,8 @@ test1 = do
             0x07                -- DATA1: .BYTE $07
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
-    let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0 0}
+    let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0 0,
+                    _debug = False}
     state' <- flip execStateT state (do
         step
         step

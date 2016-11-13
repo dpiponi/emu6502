@@ -19,6 +19,7 @@ import Data.Binary.Get
 import Data.Binary
 import Data.Int
 import Numeric
+import qualified Data.ByteString.Internal as BS (c2w, w2c)
 
 data Registers = R {
     _pc :: Word16,
@@ -34,7 +35,8 @@ makeLenses ''Registers
 data State6502 = S {
     _mem :: IOUArray Int Word8,
     _clock :: Int64,
-    _regs :: Registers
+    _regs :: Registers,
+    _debug :: Bool
 }
 
 makeLenses ''State6502
@@ -66,49 +68,71 @@ flagV = p . bitAt 6
 flagS :: Lens' Registers Bool
 flagS = p . bitAt 7
 
+debugStr str = do
+    d <- use debug
+    if d
+        then liftIO $ putStr str
+        else return ()
+
+debugStrLn str = do
+    d <- use debug
+    if d
+        then liftIO $ putStrLn str
+        else return ()
+
 dumpRegisters :: StateT State6502 IO ()
 dumpRegisters = do
     tClock <- use clock
-    liftIO $ putStr $ "clock = " ++ show tClock
+    debugStr $ "clock = " ++ show tClock
     regPC <- use (regs . pc)
-    liftIO $ putStr $ " pc = " ++ showHex regPC ""
+    debugStr $ " pc = " ++ showHex regPC ""
     regP <- use (regs . p)
-    liftIO $ putStr $ " flags = " ++ showHex regP ""
-    liftIO $ putStr $ "(S=" ++ showHex ((regP `shift` (-7)) .&. 1) ""
-    liftIO $ putStr $ ",V=" ++ showHex ((regP `shift` (-6)) .&. 1) ""
-    liftIO $ putStr $ ",B=" ++ showHex (regP `shift` ((-4)) .&. 1) ""
-    liftIO $ putStr $ ",D=" ++ showHex (regP `shift` ((-3)) .&. 1) ""
-    liftIO $ putStr $ ",I=" ++ showHex (regP `shift` ((-2)) .&. 1) ""
-    liftIO $ putStr $ ",Z=" ++ showHex (regP `shift` ((-1)) .&. 1) ""
-    liftIO $ putStr $ ",C=" ++ showHex (regP .&. 1) ""
+    debugStr $ " flags = " ++ showHex regP ""
+    debugStr $ "(S=" ++ showHex ((regP `shift` (-7)) .&. 1) ""
+    debugStr $ ",V=" ++ showHex ((regP `shift` (-6)) .&. 1) ""
+    debugStr $ ",B=" ++ showHex (regP `shift` ((-4)) .&. 1) ""
+    debugStr $ ",D=" ++ showHex (regP `shift` ((-3)) .&. 1) ""
+    debugStr $ ",I=" ++ showHex (regP `shift` ((-2)) .&. 1) ""
+    debugStr $ ",Z=" ++ showHex (regP `shift` ((-1)) .&. 1) ""
+    debugStr $ ",C=" ++ showHex (regP .&. 1) ""
     regA <- use (regs . a)
-    liftIO $ putStr $ ") A = " ++ showHex regA ""
+    debugStr $ ") A = " ++ showHex regA ""
     regX <- use (regs . x)
-    liftIO $ putStr $ " X = " ++ showHex regX ""
+    debugStr $ " X = " ++ showHex regX ""
     regY <- use (regs . y)
-    liftIO $ putStrLn $ " Y = " ++ showHex regY ""
+    debugStrLn $ " Y = " ++ showHex regY ""
 
 readMemory :: Int -> StateT State6502 IO Word8
 readMemory addr = do
-    m <- use mem
-    liftIO $ readArray m addr
+    debugStrLn $ "Reading from addr " ++ showHex addr ""
+    if addr == 0x8000
+        then do
+            c <- liftIO $ getChar
+            return $ BS.c2w c
+        else do
+            m <- use mem
+            liftIO $ readArray m addr
 
 writeMemory :: Int -> Word8 -> StateT State6502 IO ()
 writeMemory addr v = do
-    m <- use mem
-    liftIO $ writeArray m addr v
+    debugStrLn $ "Writing " ++ showHex v "" ++ " to addr " ++ showHex addr ""
+    if addr == 0x8000
+        then do
+            liftIO $ putChar (BS.w2c v)
+        else do
+            m <- use mem
+            liftIO $ writeArray m addr v
 
 dumpMemory :: StateT State6502 IO ()
 dumpMemory = do
     regPC <- use (regs . pc)
-    --m <- use memg
     b0 <- readMemory (fromIntegral regPC)
     b1 <- readMemory (fromIntegral regPC+1)
     b2 <- readMemory (fromIntegral regPC+2)
-    liftIO $ putStr $ "(PC) = "
-    liftIO $ putStr $ showHex b0 "" ++ " "
-    liftIO $ putStr $ showHex b1 "" ++ " "
-    liftIO $ putStrLn $ showHex b2 ""
+    debugStr $ "(PC) = "
+    debugStr $ showHex b0 "" ++ " "
+    debugStr $ showHex b1 "" ++ " "
+    debugStrLn $ showHex b2 ""
 
 dumpState :: StateT State6502 IO ()
 dumpState = do
@@ -117,14 +141,12 @@ dumpState = do
 
 read16 :: Word16 -> StateT State6502 IO Word16
 read16 addr = do
-    --m <- use memg
     lo <- readMemory (fromIntegral addr)
     hi <- readMemory (fromIntegral addr+1)
-    return $ (fromIntegral hi `shift` 8)+fromIntegral lo
+    return $ (i16 hi `shift` 8)+i16 lo
 
 read16zp :: Word8 -> StateT State6502 IO Word16
 read16zp addr = do
-    --m <- use memg
     lo <- readMemory (fromIntegral addr)
     hi <- readMemory (fromIntegral (addr+1))
     return $ (fromIntegral hi `shift` 8)+fromIntegral lo
@@ -139,7 +161,6 @@ i16 = fromIntegral
 
 putData :: Word8 -> Word8 -> StateT State6502 IO ()
 putData bbb src = do
-    --m <- use memg
     p0 <- use (regs . pc)
     case bbb of
         -- (zero page, X)
@@ -162,9 +183,7 @@ putData bbb src = do
             error "Can't store immediate"
         -- absolute
         0b011 -> do
-            lo <- readMemory (fromIntegral (p0+1))
-            hi <- readMemory (fromIntegral (p0+2))
-            let addr = (hi `shift` 8)+lo
+            addr <- read16 (p0+1)
             writeMemory (fromIntegral addr) src
             regs . pc .= p0+3
             clock += 4
@@ -209,7 +228,6 @@ getData :: Word8 -> StateT State6502 IO Word8
 getData bbb = case bbb of
     -- (zero page, X)
     0b000 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- use (regs . x)
         zpAddr <- readMemory (fromIntegral (p0+1))
@@ -221,7 +239,6 @@ getData bbb = case bbb of
         return src
     -- zero page
     0b001 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         addr <- readMemory (fromIntegral (p0+1))
         src <- readMemory (fromIntegral addr)
@@ -230,7 +247,6 @@ getData bbb = case bbb of
         return src
     -- immediate
     0b010 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         src <- readMemory (fromIntegral (p0+1))
         regs . pc .= p0+2
@@ -238,18 +254,16 @@ getData bbb = case bbb of
         return src
     -- absolute
     0b011 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
-        lo <- readMemory (fromIntegral (p0+1))
-        hi <- readMemory (fromIntegral (p0+2))
-        let addr = (hi `shift` 8)+lo
+        addr <- read16 (fromIntegral (p0+1))
+        addr <- read16 (p0+1)
+        debugStrLn $ "Absolute read from " ++ showHex addr ""
         src <- readMemory (fromIntegral addr)
         regs . pc .= p0+3
         clock += 4
         return src
     -- (zero page), Y
     0b100 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         offsetY <- use (regs . y)
         zpAddr <- readMemory (fromIntegral (p0+1))
@@ -262,7 +276,6 @@ getData bbb = case bbb of
         return src
     -- zero page, X
     0b101 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- use (regs . x)
         zpAddr <- readMemory (fromIntegral (p0+1))
@@ -273,7 +286,6 @@ getData bbb = case bbb of
         return src
     -- absolute, Y
     0b110 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         offsetY <- use (regs . y)
         baseAddr <- read16 (fromIntegral (p0+1))
@@ -285,7 +297,6 @@ getData bbb = case bbb of
         return src
     -- absolute, X
     0b111 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- use (regs . x)
         baseAddr <- read16 (fromIntegral (p0+1))
@@ -299,19 +310,18 @@ getData bbb = case bbb of
 {-# INLINE ins_bra #-}
 ins_bra :: Lens' Registers Bool -> Bool -> StateT State6502 IO ()
 ins_bra flag value = do
-    --m <- use memg
     f <- use (regs . flag)
     p0 <- use (regs . pc)
     let oldP = p0+2
     if value && f || not value && not f
         then do
-            liftIO $ print "Taking branch"
+            debugStrLn "Taking branch"
             offset <- readMemory (fromIntegral (p0+1)) -- XXX or ^^^
             let newP = if offset < 0x80 then oldP+i16 offset else oldP+i16 offset-0x100
             clock += if newP .&. 0xff00 == oldP .&. 0xff00 then 3 else 4
             regs . pc .= newP
         else do
-            liftIO $ print "Not taking branch"
+            debugStrLn "Not taking branch"
             clock += 2
             regs . pc .= oldP
 
@@ -330,7 +340,6 @@ ins_nop = do
 {-# INLINE ins_jmp #-}
 ins_jmp :: Word8 -> StateT State6502 IO ()
 ins_jmp _ = do
-    --m <- use memg
     p0 <- use (regs . pc)
     addr <- read16 (p0+1)
     regs . pc .= addr
@@ -339,7 +348,6 @@ ins_jmp _ = do
 {-# INLINE ins_jmp_indirect #-}
 ins_jmp_indirect :: Word8 -> StateT State6502 IO ()
 ins_jmp_indirect _ = do
-    --m <- use memg
     p0 <- use (regs . pc)
     addrAddr <- read16 (p0+1)
     addr <- read16 addrAddr
@@ -353,7 +361,6 @@ withData01 :: Word8 -> Bool -> Bool ->
 withData01 bbb write useY op = case bbb of
     -- immediate
     0b000 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         src <- readMemory (fromIntegral (p0+1))
         regs . pc .= p0+2
@@ -363,7 +370,6 @@ withData01 bbb write useY op = case bbb of
             else clock += 2
     -- zero page
     0b001 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         addr <- readMemory (fromIntegral (p0+1))
         src <- readMemory (fromIntegral addr)
@@ -387,11 +393,10 @@ withData01 bbb write useY op = case bbb of
             else error "Must write back to A"
     -- absolute
     0b011 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         lo <- readMemory (fromIntegral (p0+1))
         hi <- readMemory (fromIntegral (p0+2))
-        let addr = (hi `shift` 8)+lo
+        let addr = (i16 hi `shift` 8)+i16 lo
         src <- readMemory (fromIntegral addr)
         regs . pc .= p0+3
         dst <- op src
@@ -402,7 +407,6 @@ withData01 bbb write useY op = case bbb of
             else clock += 4
     -- zero page, X
     0b101 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- if useY then use (regs . y) else use (regs . x)
         zpAddr <- readMemory (fromIntegral (p0+1))
@@ -417,7 +421,6 @@ withData01 bbb write useY op = case bbb of
             else clock += 4
     -- absolute, X
     0b111 -> do
-        --m <- use memg
         p0 <- use (regs . pc)
         offsetX <- if useY then use (regs . y) else use (regs . x)
         baseAddr <- read16 (fromIntegral (p0+1))
@@ -444,7 +447,7 @@ ins_ora bbb = do
     regs . a .= newA
     regs . flagS .= (newA .&. 0x80 > 0)
     regs . flagZ .= (newA == 0)
-    liftIO $ print $ "A = " ++ show newA
+    debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_and #-}
 ins_and :: Word8 -> StateT State6502 IO ()
@@ -455,7 +458,7 @@ ins_and bbb = do
     regs . a .= newA
     regs . flagS .= (newA .&. 0x80 > 0)
     regs . flagZ .= (newA == 0)
-    liftIO $ print $ "A = " ++ show newA
+    debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_xor #-}
 ins_xor :: Word8 -> StateT State6502 IO ()
@@ -466,16 +469,17 @@ ins_xor bbb = do
     regs . a .= newA
     regs . flagS .= (newA .&. 0x80 > 0)
     regs . flagZ .= (newA == 0)
-    liftIO $ print $ "A = " ++ show newA
+    debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_lda #-}
 ins_lda :: Word8 -> StateT State6502 IO ()
 ins_lda bbb = do
+    debugStrLn $ "LDA instruction with address mode " ++ showHex bbb ""
     newA <- getData bbb
     regs . a .= newA
     regs . flagS .= (newA .&. 0x80 > 0)
     regs . flagZ .= (newA == 0)
-    liftIO $ print $ "A = " ++ show newA
+    debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_sta #-}
 ins_sta :: Word8 -> StateT State6502 IO ()
@@ -507,7 +511,7 @@ ins_adc bbb = do
             regs . flagV .= ((complement (fromIntegral oldA `xor` fromIntegral src) .&. 0x80) .&. ((fromIntegral oldA `xor` newA) .&. 0x80) /= 0)
             regs . flagC .= (newA > 0xff)
             regs . a .= fromIntegral (newA .&. 0xff)
-    liftIO $ print $ "A = " ++ show newA
+    debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_sbc #-}
 ins_sbc :: Word8 -> StateT State6502 IO ()
@@ -532,29 +536,39 @@ ins_sbc bbb = do
         else
             regs . a .= fromIntegral (newA .&. 0xff)
     regs . flagC .= (newA < 0x100)
-    liftIO $ print $ "A = " ++ show newA
+    debugStrLn $ "A = " ++ show newA
+
+ins_cmp :: Word8 -> StateT State6502 IO ()
+ins_cmp bbb = do
+    src <- getData bbb
+    oldA <- use (regs . a)
+    let new = i16 oldA-i16 src
+    debugStrLn $ "Comparing " ++ showHex oldA "" ++ " to " ++ showHex src ""
+    regs . flagS .= (new .&. 0x80 > 0)
+    regs . flagC .= (new < 0x100)
+    regs . flagZ .= (new .&. 0xff == 0)
 
 {-# INLINE ins_asl #-}
 ins_asl :: Word8 -> StateT State6502 IO ()
 ins_asl bbb = withData01 bbb True False $ \src -> do
-    liftIO $ print $ "into asl = " ++ show src
+    debugStrLn $ "into asl = " ++ show src
     regs . flagC .= (src .&. 0x80 > 0)
     let new = src `shift` 1
     regs . flagS .= (new .&. 0x80 > 0)
     regs . flagZ .= (new == 0)
-    liftIO $ print $ "out of asl = " ++ show new
+    debugStrLn $ "out of asl = " ++ show new
     return new
 
 {-# INLINE ins_rol #-}
 ins_rol :: Word8 -> StateT State6502 IO ()
 ins_rol bbb = withData01 bbb True False $ \src -> do
-    liftIO $ print $ "into rol = " ++ show src
+    debugStrLn $ "into rol = " ++ show src
     fc <- use (regs . flagC)
     regs . flagC .= (src .&. 0x80 > 0)
     let new = (src `shift` 1) + if fc then 1 else 0
     regs . flagS .= (new .&. 0x80 > 0)
     regs . flagZ .= (new == 0)
-    liftIO $ print $ "out of rol = " ++ show new
+    debugStrLn $ "out of rol = " ++ show new
     return new
 
 {-# INLINE ins_lsr #-}
@@ -691,14 +705,12 @@ irq = do
 
 push :: Word8 -> StateT State6502 IO ()
 push v = do
-    --m <- use memg
     sp <- use (regs . s)
     writeMemory (0x100+fromIntegral sp) v
     regs . s -= 1
 
 pull :: StateT State6502 IO Word8
 pull = do
-    --m <- use memg
     regs . s += 1
     sp <- use (regs . s)
     readMemory (0x100+fromIntegral sp)
@@ -719,7 +731,6 @@ ins_pull v = do
 
 nmi :: Bool -> StateT State6502 IO ()
 nmi sw = do
-    --m <- use memg
     p0 <- use (regs . pc)
     push (i8 (p0 `shift` (-8)))
     push (i8 (p0 .&. 0xff))
@@ -759,13 +770,12 @@ ins_rts = do
 
 step :: StateT State6502 IO ()
 step = do
-    liftIO $ print "------"
+    debugStrLn "------"
     dumpState
-    --m <- use memg
     p0 <- use (regs . pc)
-    liftIO $ print $ "pc = " ++ showHex p0 ""
+    debugStrLn $ "pc = " ++ showHex p0 ""
     i <- readMemory (fromIntegral p0)
-    liftIO $ print $ "instruction = " ++ showHex i ""
+    debugStrLn $ "instruction = " ++ showHex i ""
     case i of
         0x00 -> ins_brk
         0x08 -> ins_push p
@@ -804,10 +814,10 @@ step = do
 
         otherwise -> do
             let cc = i .&. 0b11
-            liftIO $ print $ "cc = " ++ show cc
+            debugStrLn $ "cc = " ++ show cc
             case cc of
                 0b00 -> do
-                    liftIO $ print "cc=0b00 instruction"
+                    debugStrLn "cc=0b00 instruction"
                     let aaa = (i `shift` (-5)) .&. 0b111
                     let bbb = (i `shift` (-2)) .&. 0b111
                     case aaa of
@@ -820,7 +830,7 @@ step = do
                         0b111 -> ins_cpx bbb
 
                 0b01 -> do
-                    liftIO $ print "0b01 instruction"
+                    debugStrLn "0b01 instruction"
                     let aaa = (i `shift` (-5)) .&. 0b111
                     let bbb = (i `shift` (-2)) .&. 0b111
                     case aaa of
@@ -829,13 +839,14 @@ step = do
                         0b001 -> ins_and bbb
                         0b010 -> ins_xor bbb
                         0b011 -> ins_adc bbb
-                        0b101 -> ins_lda bbb
                         0b100 -> ins_sta bbb
+                        0b101 -> ins_lda bbb
+                        0b110 -> ins_cmp bbb
                         0b111 -> ins_sbc bbb
 
                         otherwise -> error "Unknown aaa"
                 0b10 -> do
-                    liftIO $ print "0b10 instruction"
+                    debugStrLn "0b10 instruction"
                     let aaa = (i `shift` (-5)) .&. 0b111
                     let bbb = (i `shift` (-2)) .&. 0b111
                     case aaa of
