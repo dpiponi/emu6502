@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Rank2Types #-}
 
 -- http://nesdev.com/6502_cpu.txt
 
@@ -24,7 +25,8 @@ data Registers = R {
     _p :: Word8,
     _a :: Word8,
     _x :: Word8,
-    _y :: Word8
+    _y :: Word8,
+    _s :: Word8
 }
 
 makeLenses ''Registers
@@ -278,6 +280,38 @@ getData bbb = case bbb of
         clock += if carry then 5 else 4
         return src
 
+{-# INLINE ins_bra #-}
+ins_bra :: Lens' Registers Bool -> Bool -> StateT State6502 IO ()
+ins_bra flag value = do
+    m <- use mem
+    f <- use (regs . flag)
+    p0 <- use (regs . pc)
+    let oldP = p0+2
+    if value && f || not value && not f
+        then do
+            liftIO $ print "Taking branch"
+            offset <- liftIO $ readArray m (fromIntegral (p0+1)) -- XXX or ^^^
+            let newP = if offset < 0x80 then oldP+i16 offset else oldP+i16 offset-0x100
+            clock += if newP .&. 0xff00 == oldP .&. 0xff00 then 3 else 4
+            regs . pc .= newP
+        else do
+            liftIO $ print "Not taking branch"
+            clock += 2
+            regs . pc .= oldP
+
+ins_set :: Lens' Registers Bool -> Bool -> StateT State6502 IO ()
+ins_set flag value = do
+    p0 <- use (regs . pc)
+    regs . flag .= value
+    regs . pc .= p0+1
+    clock += 2
+
+ins_nop :: StateT State6502 IO ()
+ins_nop = do
+    regs . pc += 1
+    clock += 2
+
+{-# INLINE ins_jmp #-}
 ins_jmp :: Word8 -> StateT State6502 IO ()
 ins_jmp _ = do
     m <- use mem
@@ -286,6 +320,7 @@ ins_jmp _ = do
     regs . pc .= addr
     clock += 3
 
+{-# INLINE ins_jmp_indirect #-}
 ins_jmp_indirect :: Word8 -> StateT State6502 IO ()
 ins_jmp_indirect _ = do
     m <- use mem
@@ -384,6 +419,7 @@ withData01 bbb write useY op = case bbb of
 
     otherwise -> error "Unknown addressing mode"
 
+{-# INLINE ins_ora #-}
 ins_ora :: Word8 -> StateT State6502 IO ()
 ins_ora bbb = do
     src <- getData bbb
@@ -394,6 +430,7 @@ ins_ora bbb = do
     regs . flagZ .= (newA == 0)
     liftIO $ print $ "A = " ++ show newA
 
+{-# INLINE ins_and #-}
 ins_and :: Word8 -> StateT State6502 IO ()
 ins_and bbb = do
     src <- getData bbb
@@ -404,6 +441,7 @@ ins_and bbb = do
     regs . flagZ .= (newA == 0)
     liftIO $ print $ "A = " ++ show newA
 
+{-# INLINE ins_xor #-}
 ins_xor :: Word8 -> StateT State6502 IO ()
 ins_xor bbb = do
     src <- getData bbb
@@ -414,6 +452,7 @@ ins_xor bbb = do
     regs . flagZ .= (newA == 0)
     liftIO $ print $ "A = " ++ show newA
 
+{-# INLINE ins_lda #-}
 ins_lda :: Word8 -> StateT State6502 IO ()
 ins_lda bbb = do
     newA <- getData bbb
@@ -422,11 +461,13 @@ ins_lda bbb = do
     regs . flagZ .= (newA == 0)
     liftIO $ print $ "A = " ++ show newA
 
+{-# INLINE ins_sta #-}
 ins_sta :: Word8 -> StateT State6502 IO ()
 ins_sta bbb = do
     oldA <- use (regs . a)
     putData bbb oldA
 
+{-# INLINE ins_adc #-}
 ins_adc :: Word8 -> StateT State6502 IO ()
 ins_adc bbb = do
     src <- getData bbb
@@ -452,6 +493,7 @@ ins_adc bbb = do
             regs . a .= fromIntegral (newA .&. 0xff)
     liftIO $ print $ "A = " ++ show newA
 
+{-# INLINE ins_sbc #-}
 ins_sbc :: Word8 -> StateT State6502 IO ()
 ins_sbc bbb = do
     src <- getData bbb
@@ -476,6 +518,7 @@ ins_sbc bbb = do
     regs . flagC .= (newA < 0x100)
     liftIO $ print $ "A = " ++ show newA
 
+{-# INLINE ins_asl #-}
 ins_asl :: Word8 -> StateT State6502 IO ()
 ins_asl bbb = withData01 bbb True False $ \src -> do
     liftIO $ print $ "into asl = " ++ show src
@@ -486,6 +529,7 @@ ins_asl bbb = withData01 bbb True False $ \src -> do
     liftIO $ print $ "out of asl = " ++ show new
     return new
 
+{-# INLINE ins_rol #-}
 ins_rol :: Word8 -> StateT State6502 IO ()
 ins_rol bbb = withData01 bbb True False $ \src -> do
     liftIO $ print $ "into rol = " ++ show src
@@ -497,6 +541,7 @@ ins_rol bbb = withData01 bbb True False $ \src -> do
     liftIO $ print $ "out of rol = " ++ show new
     return new
 
+{-# INLINE ins_lsr #-}
 ins_lsr :: Word8 -> StateT State6502 IO ()
 ins_lsr bbb = withData01 bbb True False $ \src -> do
     regs . flagC .= (src .&. 0x01 > 0)
@@ -505,6 +550,7 @@ ins_lsr bbb = withData01 bbb True False $ \src -> do
     regs . flagZ .= (new == 0)
     return new
 
+{-# INLINE ins_ror #-}
 ins_ror :: Word8 -> StateT State6502 IO ()
 ins_ror bbb = withData01 bbb True False $ \src -> do
     fc <- use (regs . flagC)
@@ -514,16 +560,19 @@ ins_ror bbb = withData01 bbb True False $ \src -> do
     regs . flagZ .= (new == 0)
     return new
 
+{-# INLINE ins_stx #-}
 ins_stx :: Word8 -> StateT State6502 IO ()
 ins_stx bbb = withData01 bbb True True $ \src -> do
     new <- use (regs . x)
     return new
 
+{-# INLINE ins_ldx #-}
 ins_ldx :: Word8 -> StateT State6502 IO ()
 ins_ldx bbb = withData01 bbb False True $ \src -> do
     regs . x .= src
     return 0 -- Unused, I hope
 
+{-# INLINE ins_dec #-}
 ins_dec :: Word8 -> StateT State6502 IO ()
 ins_dec bbb = withData01 bbb True False $ \src -> do
     let new = src-1
@@ -531,6 +580,7 @@ ins_dec bbb = withData01 bbb True False $ \src -> do
     regs . flagZ .= (new == 0)
     return new
 
+{-# INLINE ins_inc #-}
 ins_inc :: Word8 -> StateT State6502 IO ()
 ins_inc bbb = withData01 bbb True False $ \src -> do
     let new = src+1
@@ -538,6 +588,7 @@ ins_inc bbb = withData01 bbb True False $ \src -> do
     regs . flagZ .= (new == 0)
     return new
 
+{-# INLINE ins_bit #-}
 ins_bit :: Word8 -> StateT State6502 IO ()
 ins_bit bbb = withData01 bbb False False $ \src -> do
     regs . flagS .= (src .&. 0x80 > 0)
@@ -545,16 +596,19 @@ ins_bit bbb = withData01 bbb False False $ \src -> do
     regs . flagZ .= (src == 0)
     return 0 -- unused
 
+{-# INLINE ins_sty #-}
 ins_sty :: Word8 -> StateT State6502 IO ()
 ins_sty bbb = withData01 bbb True False $ \src -> do
     new <- use (regs . y)
     return new
 
+{-# INLINE ins_ldy #-}
 ins_ldy :: Word8 -> StateT State6502 IO ()
 ins_ldy bbb = withData01 bbb False False $ \src -> do
     regs . y .= src
     return 0 -- Unused, I hope
 
+{-# INLINE ins_cpx #-}
 ins_cpx :: Word8 -> StateT State6502 IO ()
 ins_cpx bbb = withData01 bbb False False $ \src -> do
     rx <- use (regs . x)
@@ -564,6 +618,7 @@ ins_cpx bbb = withData01 bbb False False $ \src -> do
     regs . flagZ .= (new .&. 0xff == 0)
     return 0 -- unused
 
+{-# INLINE ins_cpy #-}
 ins_cpy :: Word8 -> StateT State6502 IO ()
 ins_cpy bbb = withData01 bbb False False $ \src -> do
     ry <- use (regs . y)
@@ -573,62 +628,212 @@ ins_cpy bbb = withData01 bbb False False $ \src -> do
     regs . flagZ .= (new .&. 0xff == 0)
     return 0 -- unused
 
+ins_transfer :: Lens' Registers Word8 -> Lens' Registers Word8 ->
+                StateT State6502 IO ()
+ins_transfer vsrc vdst = do
+    v0 <- use (regs . vsrc)
+    regs . vdst .= v0
+    regs . pc += 1
+    clock += 2
+
+ins_incr :: Lens' Registers Word8 -> StateT State6502 IO ()
+ins_incr v = do
+    v0 <- use (regs . v)
+    let v1 = v0+1
+
+    regs . flagS .= (v1 .&. 0x80 > 0)
+    regs . flagZ .= (v1 == 0)
+    
+    regs . v .= v1
+    regs . pc += 1
+    clock += 2
+
+ins_decr :: Lens' Registers Word8 -> StateT State6502 IO ()
+ins_decr v = do
+    v0 <- use (regs . v)
+    let v1 = v0-1
+
+    regs . flagS .= (v1 .&. 0x80 > 0)
+    regs . flagZ .= (v1 == 0)
+    
+    regs . v .= v1
+    regs . pc += 1
+    clock += 2
+
+ins_brk :: StateT State6502 IO ()
+ins_brk = do
+    regs . pc += 2
+    regs . flagB .= True
+    nmi True
+
+irq :: StateT State6502 IO ()
+irq = do
+    fi <- use (regs . flagI)
+    if not fi
+        then nmi False
+        else return ()
+
+push :: Word8 -> StateT State6502 IO ()
+push v = do
+    m <- use mem
+    sp <- use (regs . s)
+    liftIO $ writeArray m (0x100+fromIntegral sp) v
+    regs . s -= 1
+
+pull :: StateT State6502 IO Word8
+pull = do
+    m <- use mem
+    regs . s += 1
+    sp <- use (regs . s)
+    liftIO $ readArray m (0x100+fromIntegral sp)
+
+ins_push :: Lens' Registers Word8 -> StateT State6502 IO ()
+ins_push v = do
+    v0 <- use (regs . v)
+    push v0
+    regs . pc += 1
+    clock += 3
+
+ins_pull :: Lens' Registers Word8 -> StateT State6502 IO ()
+ins_pull v = do
+    v0 <- pull
+    regs . v .= v0
+    regs . pc += 1
+    clock += 4
+
+nmi :: Bool -> StateT State6502 IO ()
+nmi sw = do
+    m <- use mem
+    p0 <- use (regs . pc)
+    push (i8 (p0 `shift` (-8)))
+    push (i8 (p0 .&. 0xff))
+    regs . flagB .= sw
+    s0 <- use (regs . s)
+    push s0
+    addr <- read16 0xfffe
+    regs . pc .= addr
+    clock += 7
+
+ins_rti :: StateT State6502 IO ()
+ins_rti = do
+    s0 <- pull
+    regs . s .= s0 -- clear B
+    lo <- pull
+    hi <- pull
+    regs . pc .= i16 lo+(i16 hi `shift` 8)
+    clock += 6
+
+ins_jsr :: StateT State6502 IO ()
+ins_jsr = do
+    p0 <- use (regs . pc)
+    addr <- read16 (fromIntegral (p0+1))
+    let p2 = p0+2
+    push (i8 (p2 `shift` (-8)))
+    push (i8 (p2 .&. 0xff))
+    regs . pc .= addr
+    clock += 6
+
+ins_rts :: StateT State6502 IO ()
+ins_rts = do
+    lo <- pull
+    hi <- pull
+    let addr = i16 lo+(i16 hi `shift` 8)+1
+    regs . pc .= addr
+    clock += 6
+
 step :: StateT State6502 IO ()
 step = do
     liftIO $ print "------"
     dumpState
     m <- use mem
-    p <- use (regs . pc)
-    liftIO $ print $ "pc = " ++ showHex p ""
-    i <- liftIO $ readArray m (fromIntegral p)
+    p0 <- use (regs . pc)
+    liftIO $ print $ "pc = " ++ showHex p0 ""
+    i <- liftIO $ readArray m (fromIntegral p0)
     liftIO $ print $ "instruction = " ++ showHex i ""
-    let cc = i .&. 0b11
-    liftIO $ print $ "cc = " ++ show cc
-    case cc of
-        0b00 -> do
-            liftIO $ print "cc=0b00 instruction"
-            let aaa = (i `shift` (-5)) .&. 0b111
-            let bbb = (i `shift` (-2)) .&. 0b111
-            case aaa of
-                0b001 -> ins_bit bbb
-                0b010 -> ins_jmp bbb
-                0b011 -> ins_jmp_indirect bbb
-                0b100 -> ins_sty bbb
-                0b101 -> ins_ldy bbb
-                0b110 -> ins_cpy bbb
-                0b111 -> ins_cpx bbb
+    case i of
+        0x00 -> ins_brk
+        0x08 -> ins_push p
+        0x10 -> ins_bra flagS False
+        0x18 -> ins_set flagC False
+        0x20 -> ins_jsr
+        0x28 -> ins_pull p
+        0x30 -> ins_bra flagS True
+        0x38 -> ins_set flagC True
+        0x40 -> ins_rti
+        0x48 -> ins_push a
+        0x50 -> ins_bra flagV False
+        0x58 -> ins_set flagI False
+        0x60 -> ins_rts
+        0x68 -> ins_pull a
+        0x70 -> ins_bra flagV True
+        0x78 -> ins_set flagI True
+        0x88 -> ins_decr y
+        0x8a -> ins_transfer x a
+        0x90 -> ins_bra flagC False
+        0x98 -> ins_transfer y a
+        0x9a -> ins_transfer x s
+        0xa8 -> ins_transfer a y
+        0xaa -> ins_transfer a x
+        0xb0 -> ins_bra flagC True
+        0xb8 -> ins_set flagV False
+        0xba -> ins_transfer s x
+        0xc8 -> ins_incr y
+        0xca -> ins_decr x
+        0xd0 -> ins_bra flagZ False
+        0xd8 -> ins_set flagD False
+        0xe8 -> ins_incr x
+        0xea -> ins_nop
+        0xf0 -> ins_bra flagZ True
+        0xf8 -> ins_set flagD True
 
-        0b01 -> do
-            liftIO $ print "0b01 instruction"
-            let aaa = (i `shift` (-5)) .&. 0b111
-            let bbb = (i `shift` (-2)) .&. 0b111
-            case aaa of
+        otherwise -> do
+            let cc = i .&. 0b11
+            liftIO $ print $ "cc = " ++ show cc
+            case cc of
+                0b00 -> do
+                    liftIO $ print "cc=0b00 instruction"
+                    let aaa = (i `shift` (-5)) .&. 0b111
+                    let bbb = (i `shift` (-2)) .&. 0b111
+                    case aaa of
+                        0b001 -> ins_bit bbb
+                        0b010 -> ins_jmp bbb
+                        0b011 -> ins_jmp_indirect bbb
+                        0b100 -> ins_sty bbb
+                        0b101 -> ins_ldy bbb
+                        0b110 -> ins_cpy bbb
+                        0b111 -> ins_cpx bbb
 
-                0b000 -> ins_ora bbb
-                0b001 -> ins_and bbb
-                0b010 -> ins_xor bbb
-                0b011 -> ins_adc bbb
-                0b101 -> ins_lda bbb
-                0b100 -> ins_sta bbb
-                0b111 -> ins_sbc bbb
+                0b01 -> do
+                    liftIO $ print "0b01 instruction"
+                    let aaa = (i `shift` (-5)) .&. 0b111
+                    let bbb = (i `shift` (-2)) .&. 0b111
+                    case aaa of
 
-                otherwise -> error "Unknown aaa"
-        0b10 -> do
-            liftIO $ print "0b10 instruction"
-            let aaa = (i `shift` (-5)) .&. 0b111
-            let bbb = (i `shift` (-2)) .&. 0b111
-            case aaa of
+                        0b000 -> ins_ora bbb
+                        0b001 -> ins_and bbb
+                        0b010 -> ins_xor bbb
+                        0b011 -> ins_adc bbb
+                        0b101 -> ins_lda bbb
+                        0b100 -> ins_sta bbb
+                        0b111 -> ins_sbc bbb
 
-                0b000 -> ins_asl bbb
-                0b001 -> ins_rol bbb
-                0b010 -> ins_lsr bbb
-                0b011 -> ins_ror bbb
-                0b100 -> ins_stx bbb
-                0b101 -> ins_ldx bbb
-                0b110 -> ins_dec bbb
-                0b111 -> ins_inc bbb
+                        otherwise -> error "Unknown aaa"
+                0b10 -> do
+                    liftIO $ print "0b10 instruction"
+                    let aaa = (i `shift` (-5)) .&. 0b111
+                    let bbb = (i `shift` (-2)) .&. 0b111
+                    case aaa of
 
-        otherwise -> error "Unknown instruction class (cc)"
+                        0b000 -> ins_asl bbb
+                        0b001 -> ins_rol bbb
+                        0b010 -> ins_lsr bbb
+                        0b011 -> ins_ror bbb
+                        0b100 -> ins_stx bbb
+                        0b101 -> ins_ldx bbb
+                        0b110 -> ins_dec bbb
+                        0b111 -> ins_inc bbb
+
+                otherwise -> error "Unknown instruction class (cc)"
     dumpState
     return ()
 

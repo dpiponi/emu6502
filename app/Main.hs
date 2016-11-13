@@ -26,7 +26,7 @@ main = do
 --    arr <- listArray (0, n-1) dat
     --print arr
     --writeArray arr 0x0000 0x01
-    let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0}
+    let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0 0}
     flip runStateT state (do
         step
         step
