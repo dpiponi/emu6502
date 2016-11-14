@@ -39,5 +39,5 @@ main = do
     --print arr
     --writeArray arr 0x0000 0x01
     let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0 0,
-                    _debug = False}
+                    _debug = debugFlag args}
     flip runStateT state (forever step)

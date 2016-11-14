@@ -22,8 +22,9 @@ test1 = do
             0x07                -- DATA1: .BYTE $07
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
-    let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0 0,
-                    _debug = False}
+    let state = S { _mem = arr,  _clock = 0,
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=True}
     state' <- flip execStateT state (do
         step
         step
@@ -44,7 +45,9 @@ test2 = do
             0xff                -- DATA3: .BYTE $FF
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
-    let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0 0}
+    let state = S { _mem = arr,  _clock = 0,
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=True}
     state' <- flip execStateT state (do
         step
         step
@@ -58,7 +61,9 @@ testAdd i j k (fC, fS, fV) = do
             0x69, 0x07          -- ADC #0x07
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
-    let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0 0}
+    let state = S { _mem = arr,  _clock = 0,
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=True}
     writeArray arr 1 i
     writeArray arr 3 j
     state' <- flip execStateT state (do
@@ -92,7 +97,8 @@ testSub i j k (fC, fS, fV) = do
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
     let state = S { _mem = arr,  _clock = 0,
-                    _regs = R { _pc=0, _p=0x1, _a=0, _x=0, _y=0, _s=0 }}
+                    _regs = R { _pc=0, _p=0x1, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=True}
     writeArray arr 1 i
     writeArray arr 3 j
     state' <- flip execStateT state (do
@@ -128,7 +134,8 @@ test5 = do
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
     let state = S { _mem = arr,  _clock = 0,
-                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 }}
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=True}
     state' <- flip execStateT state (do
         step
         step
@@ -151,7 +158,8 @@ test6 = do
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
     let state = S { _mem = arr,  _clock = 0,
-                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 }}
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=True}
     state' <- flip execStateT state (do
         step
         step
@@ -175,7 +183,9 @@ test7 = do
             0x4c, 0x02, 0x00    -- JMP LOOP (3 clocks)
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
-    let state = S { _mem = arr,  _clock = 0, _regs = R 0 0 0 0 0 0}
+    let state = S { _mem = arr,  _clock = 0,
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=True}
     let n = 255
     state' <- flip execStateT state (times (2*n) step)
     let m = state' ^. mem
@@ -190,11 +200,48 @@ test8 = do
             ]
     arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
     let state = S { _mem = arr,  _clock = 0,
-                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 }}
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=True}
     state' <- flip execStateT state (times 257 step)
     let m = state' ^. mem
     assertEqual "A == 0x80" (state' ^. regs . a) 0x80
     assertEqual "clock == 5*128" (state' ^. clock) (fromIntegral $ 5*128+1)
+
+testDiv i j k = do
+    let ins = [
+                0xa9, i,    
+                0x8d, 0x2a, 0x00,
+                0xa9, j,    
+                0x8d, 0x2b, 0x00,
+                0x20, 0x13, 0x00,
+                0xad, 0x2a, 0x00,
+                0x4c, 0x10, 0x00,
+                0xa9, 0x00,    
+                0xa2, 0x08,    
+                0x0e, 0x2a, 0x00,
+                0x2a,        
+                0xcd, 0x2b, 0x00,
+                0x90, 0x03,    
+                0xed, 0x2b, 0x00,
+                0x2e, 0x2a, 0x00,
+                0xca,        
+                0xd0, 0xf1,    
+                0x60,        
+                0x00,        
+                0x00        
+            ]
+    arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
+    let state = S { _mem = arr,  _clock = 0,
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=False}
+    state' <- flip execStateT state (times 256 step)
+    let rA = state' ^. regs . a
+    assertEqual "A" rA k
+
+test9 = do
+    forM_ [0,17..255] $ \i ->
+        forM_ [1,3..24] $ \j -> do
+            testDiv i j (i `div` j)
 
 tests = TestList [TestLabel "test1" (TestCase test1),
                   TestLabel "test2" (TestCase test2),
@@ -203,7 +250,8 @@ tests = TestList [TestLabel "test1" (TestCase test1),
                   TestLabel "test5" (TestCase test5),
                   TestLabel "test6" (TestCase test6),
                   TestLabel "test7" (TestCase test7),
-                  TestLabel "test8" (TestCase test8)]
+                  TestLabel "test8" (TestCase test8),
+                  TestLabel "test9" (TestCase test9)]
 
 main = do
     runTestTT tests
