@@ -44,6 +44,7 @@ main = do
         writeArray arr (i+origin) b
         
     let [(entryPoint, _)] = readHex (entry args)
-    let state = S { _mem = arr,  _clock = 0, _regs = R entryPoint 0 0 0 0 0,
+    let state = S { _mem = arr,  _clock = 0, _regs = R entryPoint 0 0 0 0 0xff,
                     _debug = verbose args}
+    putStrLn $ "Executing from 0x" ++ showHex entryPoint ""
     flip runStateT state (forever step) -- (times 20 step)

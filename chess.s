@@ -834,7 +834,11 @@ cph:	.byte	"KQCCBBRRPPPPPPPPKQCCBBRRPPPPPPPP"
 ;
 ; BLOCK DATA
 ;		.org $1580
-SETW:	.byte 	$03, $04, $00, $07, $02, $05, $01, $06
+                .asciiz "                                "
+                .asciiz "                                "
+                .asciiz "                                "
+                .asciiz "           "
+SETW:    	.byte 	$03, $04, $00, $07, $02, $05, $01, $06
         	.byte 	$10, $17, $11, $16, $12, $15, $14, $13
         	.byte 	$73, $74, $70, $77, $72, $75, $71, $76
 	 	.byte	$60, $67, $61, $66, $62, $65, $64, $63
