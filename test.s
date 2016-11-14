@@ -1,17 +1,16 @@
         .org    $0
 
-        LDA     $8000
-        SEC
-        SBC     #'0'
+init:
+        JSR     rddec
         STA     NUM1
         STA     NUM2
         JSR     MUL
         JSR     wrdec
-        lda     #'.'
+        lda     #'/'
         STA     $8000
         lda     #10
         STA     $8000
-HALT:   JMP     HALT
+HALT:   JMP     init
 
 DIV:    LDA     #0
         LDX     #8
@@ -64,10 +63,37 @@ wrdec1:
         sta     $8000
 endwr:  rts
 
+rddec:
+        lda     #0
+        sta     ACC
+rddec1:
+        lda     $8000
+        cmp     #10
+        beq     rddec2
+        pha
+        lda     ACC
+        sta     NUM1
+        lda     #10
+        sta     NUM2
+        jsr     MUL
+        sta     ACC
+        pla
+        sec
+        sbc     #'0'
+        clc
+        adc     ACC
+        sta     ACC
+        jmp     rddec1
+rddec2:
+        lda     ACC
+        rts
+
+
 NUM:    .BYTE   0
 DEN:    .BYTE   0
 NUM1:   .BYTE   0
 NUM2:   .BYTE   0
+ACC:    .BYTE 0
 
         .END
 
