@@ -226,87 +226,81 @@ putData bbb src = do
             clock += 5
 
 getData :: Word8 -> StateT State6502 IO Word8
-getData bbb = case bbb of
-    -- (zero page, X)
-    0b000 -> do
-        p0 <- use (regs . pc)
-        offsetX <- use (regs . x)
-        zpAddr <- readMemory (fromIntegral (p0+1))
-        let addrAddr = zpAddr+offsetX :: Word8
-        addr <- read16zp addrAddr
-        src <- readMemory (fromIntegral addr)
-        regs . pc .= p0+2
-        clock += 6
-        return src
-    -- zero page
-    0b001 -> do
-        p0 <- use (regs . pc)
-        addr <- readMemory (fromIntegral (p0+1))
-        src <- readMemory (fromIntegral addr)
-        regs . pc .= p0+2
-        clock += 3
-        return src
-    -- immediate
-    0b010 -> do
-        p0 <- use (regs . pc)
-        src <- readMemory (fromIntegral (p0+1))
-        regs . pc .= p0+2
-        clock += 2
-        return src
-    -- absolute
-    0b011 -> do
-        p0 <- use (regs . pc)
-        addr <- read16 (fromIntegral (p0+1))
-        addr <- read16 (p0+1)
-        debugStrLn $ "Absolute read from " ++ showHex addr ""
-        src <- readMemory (fromIntegral addr)
-        regs . pc .= p0+3
-        clock += 4
-        return src
-    -- (zero page), Y
-    0b100 -> do
-        p0 <- use (regs . pc)
-        offsetY <- use (regs . y)
-        zpAddr <- readMemory (fromIntegral (p0+1))
-        addr <- read16zp zpAddr
-        let newAddr = addr+fromIntegral offsetY :: Word16
-        let carry = (newAddr .&. 0xff00) /= (addr .&. 0xff00)
-        src <- readMemory (fromIntegral addr+fromIntegral offsetY)
-        regs . pc .= p0+2
-        clock += if carry then 6 else 5
-        return src
-    -- zero page, X
-    0b101 -> do
-        p0 <- use (regs . pc)
-        offsetX <- use (regs . x)
-        zpAddr <- readMemory (fromIntegral (p0+1))
-        let addrAddr = zpAddr+offsetX :: Word8
-        src <- readMemory (fromIntegral addrAddr)
-        regs . pc .= p0+2
-        clock += 4
-        return src
-    -- absolute, Y
-    0b110 -> do
-        p0 <- use (regs . pc)
-        offsetY <- use (regs . y)
-        baseAddr <- read16 (fromIntegral (p0+1))
-        let addr = baseAddr+fromIntegral offsetY :: Word16
-        let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-        src <- readMemory (fromIntegral addr)
-        regs . pc .= p0+3
-        clock += if carry then 5 else 4
-        return src
-    -- absolute, X
-    0b111 -> do
-        p0 <- use (regs . pc)
-        offsetX <- use (regs . x)
-        baseAddr <- read16 (fromIntegral (p0+1))
-        let addr = baseAddr+fromIntegral offsetX :: Word16
-        let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-        src <- readMemory (fromIntegral addr)
-        regs . pc .= p0+3
-        clock += if carry then 5 else 4
-        return src
+getData bbb = do
+    p0 <- use (regs . pc)
+    case bbb of
+        -- (zero page, X)
+        0b000 -> do
+            offsetX <- use (regs . x)
+            zpAddr <- readMemory (fromIntegral (p0+1))
+            let addrAddr = zpAddr+offsetX :: Word8
+            addr <- read16zp addrAddr
+            src <- readMemory (fromIntegral addr)
+            regs . pc .= p0+2
+            clock += 6
+            return src
+        -- zero page
+        0b001 -> do
+            addr <- readMemory (fromIntegral (p0+1))
+            src <- readMemory (fromIntegral addr)
+            regs . pc .= p0+2
+            clock += 3
+            return src
+        -- immediate
+        0b010 -> do
+            src <- readMemory (fromIntegral (p0+1))
+            regs . pc .= p0+2
+            clock += 2
+            return src
+        -- absolute
+        0b011 -> do
+            addr <- read16 (fromIntegral (p0+1))
+            addr <- read16 (p0+1)
+            debugStrLn $ "Absolute read from " ++ showHex addr ""
+            src <- readMemory (fromIntegral addr)
+            regs . pc .= p0+3
+            clock += 4
+            return src
+        -- (zero page), Y
+        0b100 -> do
+            offsetY <- use (regs . y)
+            zpAddr <- readMemory (fromIntegral (p0+1))
+            addr <- read16zp zpAddr
+            let newAddr = addr+fromIntegral offsetY :: Word16
+            let carry = (newAddr .&. 0xff00) /= (addr .&. 0xff00)
+            src <- readMemory (fromIntegral addr+fromIntegral offsetY)
+            regs . pc .= p0+2
+            clock += if carry then 6 else 5
+            return src
+        -- zero page, X
+        0b101 -> do
+            offsetX <- use (regs . x)
+            zpAddr <- readMemory (fromIntegral (p0+1))
+            let addrAddr = zpAddr+offsetX :: Word8
+            src <- readMemory (fromIntegral addrAddr)
+            regs . pc .= p0+2
+            clock += 4
+            return src
+        -- absolute, Y
+        0b110 -> do
+            offsetY <- use (regs . y)
+            baseAddr <- read16 (fromIntegral (p0+1))
+            let addr = baseAddr+fromIntegral offsetY :: Word16
+            let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
+            src <- readMemory (fromIntegral addr)
+            regs . pc .= p0+3
+            clock += if carry then 5 else 4
+            return src
+        -- absolute, X
+        0b111 -> do
+            offsetX <- use (regs . x)
+            baseAddr <- read16 (fromIntegral (p0+1))
+            let addr = baseAddr+fromIntegral offsetX :: Word16
+            let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
+            src <- readMemory (fromIntegral addr)
+            regs . pc .= p0+3
+            clock += if carry then 5 else 4
+            return src
 
 {-# INLINE ins_bra #-}
 ins_bra :: Lens' Registers Bool -> Bool -> StateT State6502 IO ()
