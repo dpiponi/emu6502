@@ -108,6 +108,7 @@ readMemory addr = do
     if addr == 0x8000
         then do
             c <- liftIO $ getChar
+--            liftIO $ print $ "Read char " ++ show (BS.c2w c)
             return $ BS.c2w c
         else do
             m <- use mem

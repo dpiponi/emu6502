@@ -1,0 +1,4 @@
+ca65 --listing -DSINGLESTEP cmon.a65
+ld65 -t none -o cmon.bin cmon.o
+stack build
+stack exec emu6502-exe -- -f cmon.bin -o fdcb -e fdd1 

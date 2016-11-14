@@ -29,6 +29,9 @@ times 0 _ = return ()
 times n m = m >> times (n-1) m
 
 main = do
+    hSetBuffering stdin NoBuffering
+    hSetBuffering stdout NoBuffering
+    hSetEcho stdin False
     args <- cmdArgs clargs
     print args
     arr <- newArray (0, 0x10000) 0 :: IO (IOUArray Int Word8)
