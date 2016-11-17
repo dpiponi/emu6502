@@ -189,19 +189,22 @@ dumpState = do
     dumpMemory
     dumpRegisters
 
+make16 :: Word8 -> Word8 -> Word16
+make16 lo hi = (i16 hi `shift` 8)+i16 lo
+
 {-# INLINE read16 #-}
 read16 :: Word16 -> StateT State6502 IO Word16
 read16 addr = do
     lo <- readMemory addr
     hi <- readMemory (addr+1)
-    return $ (i16 hi `shift` 8)+i16 lo
+    return $ make16 lo hi
 
 {-# INLINE read16zp #-}
 read16zp :: Word8 -> StateT State6502 IO Word16
 read16zp addr = do
     lo <- readMemory (fromIntegral addr)
     hi <- readMemory (fromIntegral (addr+1))
-    return $ (fromIntegral hi `shift` 8)+fromIntegral lo
+    return $ make16 lo hi
 
 -- http://www.emulator101.com/6502-addressing-modes.html
 
@@ -231,8 +234,7 @@ putData bbb src = do
         0b000 -> do
             offsetX <- getX
             zpAddr <- readMemory (fromIntegral (p0+1))
-            let addrAddr = zpAddr+offsetX
-            addr <- read16zp addrAddr
+            addr <- read16zp (zpAddr+offsetX)
             writeMemory addr src
             putPC $ p0+2
             clock += 6
@@ -256,8 +258,6 @@ putData bbb src = do
             offsetY <- getY
             zpAddr <- readMemory (fromIntegral (p0+1))
             addr <- read16zp zpAddr
-            let newAddr = addr+i16 offsetY
-            --let carry = (newAddr .&. 0xff00) /= (addr .&. 0xff00)
             writeMemory (addr+i16 offsetY) src
             putPC $ p0+2
             clock += 6
@@ -265,26 +265,21 @@ putData bbb src = do
         0b101 -> do
             offsetX <- getX
             zpAddr <- readMemory (p0+1)
-            let addrAddr = zpAddr+offsetX
-            writeMemory (i16 addrAddr) src
+            writeMemory (i16 $ zpAddr+offsetX) src
             putPC $ p0+2
             clock += 4
         -- absolute, Y
         0b110 -> do
             offsetY <- getY
             baseAddr <- read16 (p0+1)
-            let addr = baseAddr+i16 offsetY
-            --let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-            writeMemory addr src
+            writeMemory (baseAddr+i16 offsetY) src
             putPC $ p0+3
             clock += 5
         -- absolute, X
         0b111 -> do
             offsetX <- getX
             baseAddr <- read16 (p0+1)
-            let addr = baseAddr+i16 offsetX
-            let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
-            writeMemory addr src
+            writeMemory (baseAddr+i16 offsetX) src
             putPC $ p0+3
             clock += 5
 
@@ -332,16 +327,15 @@ getData bbb = do
             let newAddr = addr+i16 offsetY
             let carry = (newAddr .&. 0xff00) /= (addr .&. 0xff00)
             src <- readMemory (addr+i16 offsetY)
-            regs . pc .= p0+2
+            putPC (p0+2)
             clock += if carry then 6 else 5
             return src
         -- zero page, X
         0b101 -> do
             offsetX <- getX
             zpAddr <- readMemory (p0+1)
-            let addrAddr = zpAddr+offsetX
-            src <- readMemory (i16 addrAddr)
-            regs . pc .= p0+2
+            src <- readMemory (i16 $ zpAddr+offsetX)
+            putPC (p0+2)
             clock += 4
             return src
         -- absolute, Y
@@ -351,7 +345,7 @@ getData bbb = do
             let addr = baseAddr+i16 offsetY
             let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
             src <- readMemory addr
-            regs . pc .= p0+3
+            putPC $ p0+3
             clock += if carry then 5 else 4
             return src
         -- absolute, X
@@ -361,7 +355,7 @@ getData bbb = do
             let addr = baseAddr+i16 offsetX
             let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
             src <- readMemory addr
-            regs . pc .= p0+3
+            putPC $ p0+3
             clock += if carry then 5 else 4
             return src
 
@@ -388,7 +382,7 @@ ins_set :: Lens' Registers Bool -> Bool -> StateT State6502 IO ()
 ins_set flag value = do
     p0 <- getPC
     regs . flag .= value
-    regs . pc .= p0+1
+    putPC $ p0+1
     clock += 2
 
 {-# INLINE ins_nop #-}
@@ -417,7 +411,6 @@ ins_jmp_indirect = do
     case addrAddr of
         0x20e -> do -- WRCHV
             ra <- getA
-            --liftIO $ putChar (BS.w2c ra)
             liftIO $ putStrLn $ "WRCHV " ++ show ra ++ " " ++ nonwhite ra
             ins_rts
         otherwise -> do    
@@ -434,7 +427,7 @@ withData01 bbb write useY op = case bbb of
     0b000 -> do
         p0 <- getPC
         src <- readMemory (p0+1)
-        regs . pc .= p0+2
+        putPC $ p0+2
         op src
         if write
             then error "Can't write immediate"
@@ -444,7 +437,7 @@ withData01 bbb write useY op = case bbb of
         p0 <- getPC
         addr <- readMemory (p0+1)
         src <- readMemory (i16 addr)
-        regs . pc .= p0+2
+        putPC $ p0+2
         dst <- op src
         if write
             then do
@@ -467,7 +460,7 @@ withData01 bbb write useY op = case bbb of
         p0 <- getPC
         addr <- read16 (p0+1)
         src <- readMemory addr
-        regs . pc .= p0+3
+        putPC $ p0+3
         dst <- op src
         if write
             then do
@@ -481,7 +474,7 @@ withData01 bbb write useY op = case bbb of
         zpAddr <- readMemory (p0+1)
         let addr = zpAddr+offsetX
         src <- readMemory (i16 addr)
-        regs . pc .= p0+2
+        putPC $ p0+2
         dst <- op src
         if write
             then do
@@ -496,7 +489,7 @@ withData01 bbb write useY op = case bbb of
         let addr = baseAddr+i16 offsetX
         let carry = (addr .&. 0xff00) /= (baseAddr .&. 0xff00)
         src <- readMemory addr
-        regs . pc .= p0+3
+        putPC $ p0+3
         dst <- op src
         if write
             then do
@@ -622,7 +615,6 @@ ins_cmp bbb = do
     src <- getData bbb
     oldA <- getA
     let new = i16 oldA-i16 src
-    debugStrLn $ "Comparing " ++ showHex oldA "" ++ " to " ++ showHex src ""
     setS (i8 new)
     regs . flagC .= (new < 0x100)
     setZ (i8 new)
@@ -731,9 +723,9 @@ ins_cpy :: Word8 -> StateT State6502 IO ()
 ins_cpy bbb = withData01 bbb False False $ \src -> do
     ry <- getY
     let new = i16 ry-i16 src
-    regs . flagS .= (new .&. 0x80 > 0)
     regs . flagC .= (new < 0x100)
-    regs . flagZ .= (new .&. 0xff == 0)
+    setS (i8 new)
+    setZ (i8 new)
     return 0 -- unused
 
 {-# INLINE ins_txs #-}
@@ -867,8 +859,7 @@ ins_rti = do
     regs . p .= s0
     lo <- pull
     hi <- pull
-    let newPc = i16 lo+(i16 hi `shift` 8)
-    regs . pc .= newPc
+    putPC $ pure make16 lo hi
     clock += 6
 
 -- BBC stuff XXX
@@ -898,15 +889,14 @@ ins_jsr = do
                         0x00 -> do -- Read line
                             lo <- getX
                             hi <- getY
-                            let blockAddr = i16 lo+(i16 hi `shift` 8)
-                            sAddr <- read16 blockAddr
+                            sAddr <- read16 (make16 lo hi)
                             line <- liftIO $ getLine
                             let n = length line
                             forM_ [0..n-1] $ \i -> do
-                                writeMemory (sAddr+fromIntegral i) (BS.c2w (line!!i))
+                                writeMemory (sAddr+i16 i) (BS.c2w (line!!i))
                             writeMemory (sAddr+i16 n) 13
                             regs . flagC .= False
-                            putY $ fromIntegral n+1
+                            putY $ i8 n+1
                             regs . pc += 3
 
                         otherwise -> do
@@ -945,8 +935,7 @@ ins_rts :: StateT State6502 IO ()
 ins_rts = do
     lo <- pull
     hi <- pull
-    let addr = i16 lo+(i16 hi `shift` 8)+1
-    putPC addr
+    putPC $ make16 lo hi+1
     clock += 6
 
 step :: StateT State6502 IO ()
@@ -1001,7 +990,6 @@ step = do
             debugStrLn $ "cc = " ++ show cc
             case cc of
                 0b00 -> do
-                    debugStrLn "cc=0b00 instruction"
                     let aaa = (i `shift` (-5)) .&. 0b111
                     let bbb = (i `shift` (-2)) .&. 0b111
                     case aaa of
@@ -1017,7 +1005,6 @@ step = do
                             error "bbb=0 error!"
 
                 0b01 -> do
-                    debugStrLn "0b01 instruction"
                     let aaa = (i `shift` (-5)) .&. 0b111
                     let bbb = (i `shift` (-2)) .&. 0b111
                     case aaa of
@@ -1033,7 +1020,6 @@ step = do
 
                         otherwise -> error "Unknown aaa"
                 0b10 -> do
-                    debugStrLn "0b10 instruction"
                     let aaa = (i `shift` (-5)) .&. 0b111
                     let bbb = (i `shift` (-2)) .&. 0b111
                     case aaa of
