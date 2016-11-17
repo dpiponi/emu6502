@@ -3,9 +3,13 @@ module Main where
 import Data.Array.IO
 import Test.HUnit
 import Data.Word
+import Data.Bits
 import Control.Monad.State
 import Control.Monad
 import Control.Lens
+import Control.Monad.Loops
+import System.IO
+import Numeric
 
 import Core
 
@@ -176,6 +180,14 @@ test6 = do
     assertEqual "m4 == 0x13" m4 0x13
     assertEqual "clock == 24" (state' ^. clock) 24
 
+readWord32 :: IOUArray Int Word8 -> Word16 -> IO Word32
+readWord32 m p = do
+    b0 <- readArray m (fromIntegral p)
+    b1 <- readArray m (fromIntegral (p+1))
+    b2 <- readArray m (fromIntegral (p+2))
+    b3 <- readArray m (fromIntegral (p+3))
+    return $ fromIntegral b0+(fromIntegral b1 `shift` 8)+(fromIntegral b2 `shift` 16)+(fromIntegral b3 `shift` 24)
+
 test7 = do
     let ins = [
             0xa9, 0x00,         -- LDA #$00 (2 clocks)
@@ -243,6 +255,64 @@ test9 = do
         forM_ [1,3..24] $ \j -> do
             testDiv i j (i `div` j)
 
+test10 = do
+    let ins = [
+                0xca,   -- DEX
+                0xca,   -- DEX
+                0x8a,   -- TXA
+                0xa8,   -- TAY
+                0x00    -- BRK
+            ]
+    arr <- newListArray (0, 2047) ins :: IO (IOUArray Int Word8)
+    let state = S { _mem = arr,  _clock = 0,
+                    _regs = R { _pc=0, _p=0, _a=0, _x=0, _y=0, _s=0 },
+                    _debug=False}
+    state' <- flip execStateT state $ iterateUntil id $ do
+                                        step
+                                        aboutToBrk
+    let rY = state' ^. regs . y
+    assertEqual "Y" 0xfe rY
+
+runFile :: String -> Bool -> IO State6502
+runFile fileName verbose = do
+    arr <- newArray (0, 0x10000) 0 :: IO (IOUArray Int Word8)
+    handle <- openFile fileName ReadMode
+    n <- hGetArray handle arr 0x10000
+    hClose handle
+    let state = S { _mem = arr,  _clock = 0,
+                    _regs = R { _pc=0x0000, _p=0, _a=0, _x=0, _y=0, _s=0xff },
+                    _debug = verbose }
+    state' <- flip execStateT state $ iterateUntil id $ do
+                                        step
+                                        aboutToBrk
+    return state'
+
+test11 = do
+    state <- runFile "test1.bin" False
+    let ra = state ^. regs . a
+    assertEqual "a" 0x33 ra
+
+test12 = do
+    state <- runFile "test12.bin" False
+    let resultAddr = 0x001b
+    sum <- readWord32 (state ^. mem) resultAddr
+    assertEqual "sum=11111110" 0x11111110 sum
+
+test13 = do
+    state <- runFile "test13.bin" False
+    let rA = state ^. regs . a
+    assertEqual "A" 33 rA
+
+test14 = do
+    state <- runFile "test14.bin" False
+    let rA = state ^. regs . a
+    assertEqual "A" 1 rA
+
+test15 = do
+    state <- runFile "test15.bin" True
+    let rA = state ^. regs . a
+    assertEqual "A" 0x0d rA
+
 tests = TestList [TestLabel "test1" (TestCase test1),
                   TestLabel "test2" (TestCase test2),
                   TestLabel "test3" (TestCase test3),
@@ -251,7 +321,13 @@ tests = TestList [TestLabel "test1" (TestCase test1),
                   TestLabel "test6" (TestCase test6),
                   TestLabel "test7" (TestCase test7),
                   TestLabel "test8" (TestCase test8),
-                  TestLabel "test9" (TestCase test9)]
+                  TestLabel "test9" (TestCase test9),
+                  TestLabel "test10" (TestCase test10),
+                  TestLabel "test11" (TestCase test11),
+                  TestLabel "test12" (TestCase test12),
+                  TestLabel "test13" (TestCase test13),
+                  TestLabel "test14" (TestCase test14),
+                  TestLabel "test15" (TestCase test15)]
 
 main = do
     runTestTT tests

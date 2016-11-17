@@ -6,7 +6,7 @@ init:
         STA     NUM2
         JSR     MUL
         JSR     wrdec
-        lda     #'/'
+        lda     #'.'
         STA     $8000
         lda     #10
         STA     $8000
