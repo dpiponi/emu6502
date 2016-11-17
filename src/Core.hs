@@ -42,7 +42,9 @@ data State6502 = S {
 
 makeLenses ''State6502
 
-writeRAM :: IOUArray Int Word8 -> Int -> Word8 -> StateT State6502 IO ()
+type Monad6502 = StateT State6502 IO ()
+
+writeRAM :: IOUArray Int Word8 -> Int -> Word8 -> Monad6502
 writeRAM m addr b = liftIO $ writeArray m addr b
 
 readRAM :: IOUArray Int Word8 -> Int -> StateT State6502 IO Word8
@@ -74,7 +76,7 @@ getA :: StateT State6502 IO Word8
 getA = use (regs . a)
 
 {-# INLINE putA #-}
-putA :: Word8 -> StateT State6502 IO ()
+putA :: Word8 -> Monad6502
 putA r = regs . a .= r
 
 {-# INLINE getS #-}
@@ -82,7 +84,7 @@ getS :: StateT State6502 IO Word8
 getS = use (regs . s)
 
 {-# INLINE putS #-}
-putS :: Word8 -> StateT State6502 IO ()
+putS :: Word8 -> Monad6502
 putS r = regs . s .= r
 
 {-# INLINE getX #-}
@@ -90,7 +92,7 @@ getX :: StateT State6502 IO Word8
 getX = use (regs . x)
 
 {-# INLINE putX #-}
-putX :: Word8 -> StateT State6502 IO ()
+putX :: Word8 -> Monad6502
 putX r = regs . x .= r
 
 {-# INLINE getY #-}
@@ -98,11 +100,11 @@ getY :: StateT State6502 IO Word8
 getY = use (regs . y)
 
 {-# INLINE putY #-}
-putY :: Word8 -> StateT State6502 IO ()
+putY :: Word8 -> Monad6502
 putY r = regs . y .= r
 
 {-# INLINE putPC #-}
-putPC :: Word16 -> StateT State6502 IO ()
+putPC :: Word16 -> Monad6502
 putPC r = regs . pc .= r
 
 {-# INLINE getPC #-}
@@ -121,7 +123,7 @@ debugStrLn str = do
         then liftIO $ putStrLn str
         else return ()
 
-dumpRegisters :: StateT State6502 IO ()
+dumpRegisters :: Monad6502
 dumpRegisters = do
     tClock <- use clock
     debugStr $ "clock = " ++ show tClock
@@ -161,7 +163,7 @@ readMemory addr = do
     liftIO $ readArray m (fromIntegral addr)
 
 {-# INLINE writeMemory #-}
-writeMemory :: Word16 -> Word8 -> StateT State6502 IO ()
+writeMemory :: Word16 -> Word8 -> Monad6502
 writeMemory addr v = do
     m <- use mem
     liftIO $ writeArray m (fromIntegral addr) v
@@ -173,7 +175,7 @@ writeMemory addr v = do
     --         m <- use mem
     --         liftIO $ writeArray m addr v
 
-dumpMemory :: StateT State6502 IO ()
+dumpMemory :: Monad6502
 dumpMemory = do
     regPC <- getPC
     b0 <- readMemory (fromIntegral regPC)
@@ -184,7 +186,7 @@ dumpMemory = do
     debugStr $ showHex b1 "" ++ " "
     debugStrLn $ showHex b2 ""
 
-dumpState :: StateT State6502 IO ()
+dumpState :: Monad6502
 dumpState = do
     dumpMemory
     dumpRegisters
@@ -226,7 +228,7 @@ aboutToBrk = do
     ins <- readMemory (fromIntegral p0)
     return $ ins == 0x00
 
-putData :: Word8 -> Word8 -> StateT State6502 IO ()
+putData :: Word8 -> Word8 -> Monad6502
 putData bbb src = do
     p0 <- getPC
     case bbb of
@@ -360,7 +362,7 @@ getData bbb = do
             return src
 
 {-# INLINE ins_bra #-}
-ins_bra :: Lens' Registers Bool -> Bool -> StateT State6502 IO ()
+ins_bra :: Lens' Registers Bool -> Bool -> Monad6502
 ins_bra flag value = do
     f <- use (regs . flag)
     p0 <- getPC
@@ -378,7 +380,7 @@ ins_bra flag value = do
             regs . pc .= oldP
 
 {-# INLINE ins_set #-}
-ins_set :: Lens' Registers Bool -> Bool -> StateT State6502 IO ()
+ins_set :: Lens' Registers Bool -> Bool -> Monad6502
 ins_set flag value = do
     p0 <- getPC
     regs . flag .= value
@@ -386,13 +388,13 @@ ins_set flag value = do
     clock += 2
 
 {-# INLINE ins_nop #-}
-ins_nop :: StateT State6502 IO ()
+ins_nop :: Monad6502
 ins_nop = do
     regs . pc += 1
     clock += 2
 
 {-# INLINE ins_jmp #-}
-ins_jmp :: StateT State6502 IO ()
+ins_jmp :: Monad6502
 ins_jmp = do
     p0 <- getPC
     addr <- read16 (p0+1)
@@ -403,7 +405,7 @@ nonwhite ra | ra < 32 = "()"
 nonwhite ra = "'" ++ [BS.w2c ra] ++ "'"
 
 {-# INLINE ins_jmp_indirect #-}
-ins_jmp_indirect :: StateT State6502 IO ()
+ins_jmp_indirect :: Monad6502
 ins_jmp_indirect = do
     p0 <- getPC
     addrAddr <- read16 (p0+1)
@@ -421,7 +423,7 @@ ins_jmp_indirect = do
 -- Need to separate R/W/RW XXX
 withData01 :: Word8 -> Bool -> Bool ->
               (Word8 -> StateT State6502 IO Word8) ->
-              StateT State6502 IO ()
+              Monad6502
 withData01 bbb write useY op = case bbb of
     -- immediate
     0b000 -> do
@@ -501,15 +503,15 @@ withData01 bbb write useY op = case bbb of
     otherwise -> error "Unknown addressing mode"
 
 {-# INLINE setS #-}
-setS :: Word8 -> StateT State6502 IO ()
+setS :: Word8 -> Monad6502
 setS r = regs . flagS .= (r >= 0x80)
 
 {-# INLINE setZ #-}
-setZ :: Word8 -> StateT State6502 IO ()
+setZ :: Word8 -> Monad6502
 setZ r = regs . flagZ .= (r == 0)
 
 {-# INLINE ins_ora #-}
-ins_ora :: Word8 -> StateT State6502 IO ()
+ins_ora :: Word8 -> Monad6502
 ins_ora bbb = do
     src <- getData bbb
     oldA <- getA
@@ -520,7 +522,7 @@ ins_ora bbb = do
     debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_and #-}
-ins_and :: Word8 -> StateT State6502 IO ()
+ins_and :: Word8 -> Monad6502
 ins_and bbb = do
     src <- getData bbb
     oldA <- getA
@@ -531,7 +533,7 @@ ins_and bbb = do
     debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_xor #-}
-ins_xor :: Word8 -> StateT State6502 IO ()
+ins_xor :: Word8 -> Monad6502
 ins_xor bbb = do
     src <- getData bbb
     oldA <- getA
@@ -542,7 +544,7 @@ ins_xor bbb = do
     debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_lda #-}
-ins_lda :: Word8 -> StateT State6502 IO ()
+ins_lda :: Word8 -> Monad6502
 ins_lda bbb = do
     debugStrLn $ "LDA instruction with address mode " ++ showHex bbb ""
     newA <- getData bbb
@@ -552,13 +554,13 @@ ins_lda bbb = do
     debugStrLn $ "A = " ++ show newA
 
 {-# INLINE ins_sta #-}
-ins_sta :: Word8 -> StateT State6502 IO ()
+ins_sta :: Word8 -> Monad6502
 ins_sta bbb = do
     oldA <- getA
     putData bbb oldA
 
 {-# INLINE ins_adc #-}
-ins_adc :: Word8 -> StateT State6502 IO ()
+ins_adc :: Word8 -> Monad6502
 ins_adc bbb = do
     src <- getData bbb
     oldA <- getA
@@ -583,7 +585,7 @@ ins_adc bbb = do
             putA $ fromIntegral (newA .&. 0xff)
 
 {-# INLINE ins_sbc #-}
-ins_sbc :: Word8 -> StateT State6502 IO ()
+ins_sbc :: Word8 -> Monad6502
 ins_sbc bbb = do
     src <- getData bbb
     oldA <- getA
@@ -610,7 +612,7 @@ ins_sbc bbb = do
             regs . flagC .= (newA < 0x100)
     debugStrLn $ "A = " ++ show newA
 
-ins_cmp :: Word8 -> StateT State6502 IO ()
+ins_cmp :: Word8 -> Monad6502
 ins_cmp bbb = do
     src <- getData bbb
     oldA <- getA
@@ -620,7 +622,7 @@ ins_cmp bbb = do
     setZ (i8 new)
 
 {-# INLINE ins_asl #-}
-ins_asl :: Word8 -> StateT State6502 IO ()
+ins_asl :: Word8 -> Monad6502
 ins_asl bbb = withData01 bbb True False $ \src -> do
     regs . flagC .= (src .&. 0x80 > 0)
     let new = src `shift` 1
@@ -629,7 +631,7 @@ ins_asl bbb = withData01 bbb True False $ \src -> do
     return new
 
 {-# INLINE ins_rol #-}
-ins_rol :: Word8 -> StateT State6502 IO ()
+ins_rol :: Word8 -> Monad6502
 ins_rol bbb = withData01 bbb True False $ \src -> do
     fc <- use (regs . flagC)
     regs . flagC .= (src .&. 0x80 > 0)
@@ -639,7 +641,7 @@ ins_rol bbb = withData01 bbb True False $ \src -> do
     return new
 
 {-# INLINE ins_lsr #-}
-ins_lsr :: Word8 -> StateT State6502 IO ()
+ins_lsr :: Word8 -> Monad6502
 ins_lsr bbb = withData01 bbb True False $ \src -> do
     regs . flagC .= (src .&. 0x01 > 0)
     let new = src `shift` (-1)
@@ -648,7 +650,7 @@ ins_lsr bbb = withData01 bbb True False $ \src -> do
     return new
 
 {-# INLINE ins_ror #-}
-ins_ror :: Word8 -> StateT State6502 IO ()
+ins_ror :: Word8 -> Monad6502
 ins_ror bbb = withData01 bbb True False $ \src -> do
     fc <- use (regs . flagC)
     regs . flagC .= (src .&. 0x01 > 0)
@@ -658,11 +660,11 @@ ins_ror bbb = withData01 bbb True False $ \src -> do
     return new
 
 {-# INLINE ins_stx #-}
-ins_stx :: Word8 -> StateT State6502 IO ()
+ins_stx :: Word8 -> Monad6502
 ins_stx bbb = withData01 bbb True True $ \_ -> getX
 
 {-# INLINE ins_ldx #-}
-ins_ldx :: Word8 -> StateT State6502 IO ()
+ins_ldx :: Word8 -> Monad6502
 ins_ldx bbb = withData01 bbb False True $ \src -> do
     putX src
     setS src
@@ -670,7 +672,7 @@ ins_ldx bbb = withData01 bbb False True $ \src -> do
     return 0 -- Unused, I hope
 
 {-# INLINE ins_dec #-}
-ins_dec :: Word8 -> StateT State6502 IO ()
+ins_dec :: Word8 -> Monad6502
 ins_dec bbb = withData01 bbb True False $ \src -> do
     let new = src-1
     setS new
@@ -678,7 +680,7 @@ ins_dec bbb = withData01 bbb True False $ \src -> do
     return new
 
 {-# INLINE ins_inc #-}
-ins_inc :: Word8 -> StateT State6502 IO ()
+ins_inc :: Word8 -> Monad6502
 ins_inc bbb = withData01 bbb True False $ \src -> do
     let new = src+1
     setS new
@@ -686,7 +688,7 @@ ins_inc bbb = withData01 bbb True False $ \src -> do
     return new
 
 {-# INLINE ins_bit #-}
-ins_bit :: Word8 -> StateT State6502 IO ()
+ins_bit :: Word8 -> Monad6502
 ins_bit bbb = withData01 bbb False False $ \src -> do
     ra <- getA
     setS src
@@ -695,13 +697,13 @@ ins_bit bbb = withData01 bbb False False $ \src -> do
     return 0 -- unused
 
 {-# INLINE ins_sty #-}
-ins_sty :: Word8 -> StateT State6502 IO ()
+ins_sty :: Word8 -> Monad6502
 ins_sty bbb = withData01 bbb True False $ \src -> do
     new <- getY
     return new
 
 {-# INLINE ins_ldy #-}
-ins_ldy :: Word8 -> StateT State6502 IO ()
+ins_ldy :: Word8 -> Monad6502
 ins_ldy bbb = withData01 bbb False False $ \src -> do
     putY src
     setS src
@@ -709,7 +711,7 @@ ins_ldy bbb = withData01 bbb False False $ \src -> do
     return 0 -- Unused, I hope
 
 {-# INLINE ins_cpx #-}
-ins_cpx :: Word8 -> StateT State6502 IO ()
+ins_cpx :: Word8 -> Monad6502
 ins_cpx bbb = withData01 bbb False False $ \src -> do
     rx <- getX
     let new = i16 rx-i16 src
@@ -719,7 +721,7 @@ ins_cpx bbb = withData01 bbb False False $ \src -> do
     return 0 -- unused
 
 {-# INLINE ins_cpy #-}
-ins_cpy :: Word8 -> StateT State6502 IO ()
+ins_cpy :: Word8 -> Monad6502
 ins_cpy bbb = withData01 bbb False False $ \src -> do
     ry <- getY
     let new = i16 ry-i16 src
@@ -729,7 +731,7 @@ ins_cpy bbb = withData01 bbb False False $ \src -> do
     return 0 -- unused
 
 {-# INLINE ins_txs #-}
-ins_txs :: StateT State6502 IO ()
+ins_txs :: Monad6502
 ins_txs = do
     v0 <- getX
     putS v0
@@ -738,7 +740,7 @@ ins_txs = do
 
 {-# INLINE ins_transfer_flag #-}
 ins_transfer_flag :: Lens' Registers Word8 -> Lens' Registers Word8 ->
-                     StateT State6502 IO ()
+                     Monad6502
 ins_transfer_flag vsrc vdst = do
     v0 <- use (regs . vsrc)
     regs . vdst .= v0
@@ -748,7 +750,7 @@ ins_transfer_flag vsrc vdst = do
     clock += 2
 
 {-# INLINE ins_incr #-}
-ins_incr :: Lens' Registers Word8 -> StateT State6502 IO ()
+ins_incr :: Lens' Registers Word8 -> Monad6502
 ins_incr v = do
     v0 <- use (regs . v)
     let v1 = v0+1
@@ -759,7 +761,7 @@ ins_incr v = do
     clock += 2
 
 {-# INLINE ins_decr #-}
-ins_decr :: Lens' Registers Word8 -> StateT State6502 IO ()
+ins_decr :: Lens' Registers Word8 -> Monad6502
 ins_decr v = do
     v0 <- use (regs . v)
     let v1 = v0-1
@@ -770,14 +772,14 @@ ins_decr v = do
     clock += 2
 
 {-# INLINE ins_brk #-}
-ins_brk :: StateT State6502 IO ()
+ins_brk :: Monad6502
 ins_brk = do
     regs . pc += 2
     regs . flagB .= True
     nmi True
 
 -- Am I using wrong address for IRQ. Should it be 0xfffe for IRQ, 0xfffa for NMI?
-irq :: StateT State6502 IO ()
+irq :: Monad6502
 irq = do
     fi <- use (regs . flagI)
     if not fi
@@ -785,7 +787,7 @@ irq = do
         else return ()
 
 {-# INLINE push #-}
-push :: Word8 -> StateT State6502 IO ()
+push :: Word8 -> Monad6502
 push v = do
     sp <- use (regs . s)
     writeMemory (0x100+i16 sp) v
@@ -799,7 +801,7 @@ pull = do
     readMemory (0x100+i16 sp)
 
 {-# INLINE ins_push #-}
-ins_push :: Lens' Registers Word8 -> StateT State6502 IO ()
+ins_push :: Lens' Registers Word8 -> Monad6502
 ins_push v = do
     v0 <- use (regs . v)
     push v0
@@ -807,7 +809,7 @@ ins_push v = do
     clock += 3
 
 {-# INLINE ins_php #-}
-ins_php :: StateT State6502 IO ()
+ins_php :: Monad6502
 ins_php = do
     v0 <- use (regs . p)
     push (v0 .|. 0x30)
@@ -815,7 +817,7 @@ ins_php = do
     clock += 3
 
 {-# INLINE ins_pull #-}
-ins_pull :: Lens' Registers Word8 -> StateT State6502 IO ()
+ins_pull :: Lens' Registers Word8 -> Monad6502
 ins_pull v = do
     v0 <- pull
     regs . v .= v0
@@ -823,7 +825,7 @@ ins_pull v = do
     clock += 4
 
 {-# INLINE ins_pla #-}
-ins_pla :: StateT State6502 IO ()
+ins_pla :: Monad6502
 ins_pla = do
     v0 <- pull
     putA v0
@@ -832,7 +834,7 @@ ins_pla = do
     regs . pc += 1
     clock += 4
 
-nmi :: Bool -> StateT State6502 IO ()
+nmi :: Bool -> Monad6502
 nmi sw = do
     p0 <- getPC
     push (i8 (p0 `shift` (-8)))
@@ -853,18 +855,18 @@ nmi sw = do
         else return ()
 
 {-# INLINE ins_rti #-}
-ins_rti :: StateT State6502 IO ()
+ins_rti :: Monad6502
 ins_rti = do
     s0 <- pull
     regs . p .= s0
     lo <- pull
     hi <- pull
-    putPC $ pure make16 lo hi
+    putPC $ make16 lo hi
     clock += 6
 
 -- BBC stuff XXX
 {-# INLINE ins_jsr #-}
-ins_jsr :: StateT State6502 IO ()
+ins_jsr :: Monad6502
 ins_jsr = do
     p0 <- getPC
     addr <- read16 (p0+1)
@@ -931,14 +933,14 @@ ins_jsr = do
             clock += 6
 
 {-# INLINE ins_rts #-}
-ins_rts :: StateT State6502 IO ()
+ins_rts :: Monad6502
 ins_rts = do
     lo <- pull
     hi <- pull
     putPC $ make16 lo hi+1
     clock += 6
 
-step :: StateT State6502 IO ()
+step :: Monad6502
 step = do
     debugStrLn "------"
     dumpState
