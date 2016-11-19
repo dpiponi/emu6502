@@ -15,7 +15,8 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Core, Intel, Binary
+  ghc-options:         -O5 -fwarn-missing-signatures
+  exposed-modules:     Core, Intel, Binary, VirtualBBC, Vanilla
   build-depends:       base >= 4.7 && < 5
                      , sdl2
                      , bytestring
@@ -31,7 +32,7 @@ library
 executable emu6502-exe
   hs-source-dirs:      app
   main-is:             Main.hs
-  ghc-options:         -O3 -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:         -O5 -fwarn-missing-signatures
   build-depends:       base
                      , sdl2
                      , bytestring

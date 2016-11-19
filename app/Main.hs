@@ -2,30 +2,35 @@
 {-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
+import GHC.Exts
 import Data.Array.IO
 import Data.Word
 import Control.Monad.State
 import Control.Lens hiding (noneOf)
 import Data.Bits
-import Data.ByteString as B hiding (putStrLn, count, head)
+import Data.Bits.Lens
+import Data.ByteString as B hiding (putStrLn, putStr, count, head)
 import System.IO
 import Data.Binary.Get
 import Text.Parsec
 import Data.Binary
-import System.Console.CmdArgs
+import System.Console.CmdArgs hiding ((+=))
 import Numeric
-import Intel hiding (hexWord16, fromHex)
-import Binary
 import Control.Monad.Loops
-
 import Core
+import Binary
+import Intel hiding (hexWord16, fromHex)
+import VirtualBBC
+--import Vanilla
 
 data Args = Args { verbose :: Bool,
                    file :: String,
                    org :: String,
                    entry :: String } deriving (Show, Data, Typeable)
 
+clargs :: Args
 clargs = Args { verbose = False, org = "0", entry = "0", file = "test.bin" }
 
 times :: (Integral n, Monad m) => n -> m a -> m ()
@@ -56,16 +61,16 @@ filespec = do
 
 filespecs = filespec `sepBy1` (char ',')
 
-test = do
-    let Right u = parse filespecs "" "b:BASIC:8000,i:ROM"
-    print u
+--xxx = getPC
 
+loadFile :: IOUArray Int Word8 -> FileSpec -> IO ()
 loadFile arr (Intel f) = readIntel arr f
 loadFile arr (Binary f o) = readBinary arr f o
 
+--step' :: Monad6502 ()
+--step' = step
+main :: IO ()
 main = do
-    test
-
     hSetBuffering stdin NoBuffering
     hSetBuffering stdout NoBuffering
     -- hSetEcho stdin False
@@ -74,21 +79,6 @@ main = do
 
     arr <- newArray (0, 0xffff) 0 :: IO (IOUArray Int Word8)
 
-    --arr <- newArray (0, 0x10000) 0 :: IO (IOUArray Int Word8)
-    --handle <- openFile (file args) ReadMode
-    --n <- hGetArray handle arr 0x10000
-    --putStrLn $ "Read " ++ show n ++ " bytes"
-    --hClose handle
-    --let [(origin, _)] = readHex (org args)
-
-    --putStrLn $ "Relocating to " ++ showHex origin ""
-    --forM_ [(n-1), (n-2)..0] $ \i -> do
-    --    b <- readArray arr i
-    --    writeArray arr (i+origin) b
-
-    arr <- newArray (0, 0xffff) 0 :: IO (IOUArray Int Word8)
-
-    --readIntel arr (file args)
     putStrLn $ "Running from " ++ file args
     let Right specs = parse filespecs "" (file args)
     forM_ specs $ \spec ->
@@ -111,4 +101,5 @@ main = do
                                 dumpState
                                 liftIO $ print "Done"
     -}
-    flip execStateT state $ forever step
+    flip execStateT state $ unM $ forever (inline step)
+    return ()

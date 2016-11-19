@@ -1,3 +1,10 @@
+To do
+-----
 1. Proper startup
-2. Proper handling of non-existent flags, esp. B
 3. Real external data bus timings
+4. Type class for generalized execution?
+5. Unused instruction for hosyt access?
+
+Done
+----
+2. Proper handling of non-existent flags, esp. B
