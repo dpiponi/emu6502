@@ -145,6 +145,64 @@ aboutToBrk = do
     return $ ins == 0x00
 -}
 
+{-# INLINABLE writeIndirectX #-}
+writeIndirectX :: Emu6502 m => Word8 -> m ()
+writeIndirectX src = do
+    p0 <- getPC
+    offsetX <- getX
+    zpAddr <- readMemory (fromIntegral (p0+1))
+    addr <- read16zp (zpAddr+offsetX)
+    writeMemory addr src
+    putPC $ p0+2
+    tick 6
+
+{-# INLINABLE writeZeroPage #-}
+writeZeroPage :: Emu6502 m => Word8 -> m ()
+writeZeroPage src = do
+    p0 <- getPC
+    addr <- readMemory (fromIntegral (p0+1))
+    writeMemory (i16 addr) src
+    putPC $ p0+2
+    tick 3
+
+{-# INLINABLE writeAbsolute #-}
+writeAbsolute :: Emu6502 m => Word8 -> m()
+writeAbsolute src = do
+    p0 <- getPC
+    addr <- read16 (p0+1)
+    writeMemory addr src
+    putPC $ p0+3
+    tick 4
+
+{-# INLINABLE writeIndirectY #-}
+writeIndirectY :: Emu6502 m => Word8 -> m ()
+writeIndirectY src = do
+    p0 <- getPC
+    offsetY <- getY
+    addr <- readMemory (fromIntegral (p0+1)) >>= read16zp
+    writeMemory (addr+i16 offsetY) src
+    putPC $ p0+2
+    tick 6
+
+{-# INLINABLE writeZeroPageX #-}
+writeZeroPageX :: Emu6502 m => Word8 -> m ()
+writeZeroPageX src = do
+    p0 <- getPC
+    offsetX <- getX
+    zpAddr <- readMemory (p0+1)
+    writeMemory (i16 $ zpAddr+offsetX) src
+    putPC $ p0+2
+    tick 4
+
+{-# INLINABLE writeAbsoluteY #-}
+writeAbsoluteY src = do
+    p0 <- getPC
+    offsetY <- getY
+    baseAddr <- read16 (p0+1)
+    writeMemory (baseAddr+i16 offsetY) src
+    putPC $ p0+3
+    tick 5
+
 {-# INLINABLE writeAbsoluteX #-}
 writeAbsoluteX :: Emu6502 m => Word8 -> m ()
 writeAbsoluteX src = do
@@ -155,61 +213,18 @@ writeAbsoluteX src = do
     putPC $ p0+3
     tick 5
 
-{-# INLINABLE writeZeroPageX #-}
-writeZeroPageX :: Emu6502 m => Word8 -> m ()
-writeZeroPageX src = do
-    p0 <- getPC
-    offsetX <- getX
-    zpAddr <- readMemory (fromIntegral (p0+1))
-    addr <- read16zp (zpAddr+offsetX)
-    writeMemory addr src
-    putPC $ p0+2
-    tick 6
-
 {-# INLINABLE putData #-}
 putData :: Emu6502 m => Word8 -> Word8 -> m ()
 putData bbb src = do
     p0 <- getPC
     case bbb of
-        -- (zero page, X)
-        0b000 -> writeZeroPageX src
-        -- zero page
-        0b001 -> do
-            addr <- readMemory (fromIntegral (p0+1))
-            writeMemory (i16 addr) src
-            putPC $ p0+2
-            tick 3
-        -- immediate
-        0b010 -> readMemory p0 >>= illegal -- XXX check in caller
-        -- absolute
-        0b011 -> do
-            addr <- read16 (p0+1)
-            writeMemory addr src
-            putPC $ p0+3
-            tick 4
-        -- (zero page), Y
-        0b100 -> do
-            offsetY <- getY
-            addr <- readMemory (fromIntegral (p0+1)) >>= read16zp
-            --addr <- read16zp zpAddr
-            writeMemory (addr+i16 offsetY) src
-            putPC $ p0+2
-            tick 6
-        -- zero page, X
-        0b101 -> do
-            offsetX <- getX
-            zpAddr <- readMemory (p0+1)
-            writeMemory (i16 $ zpAddr+offsetX) src
-            putPC $ p0+2
-            tick 4
-        -- absolute, Y
-        0b110 -> do
-            offsetY <- getY
-            baseAddr <- read16 (p0+1)
-            writeMemory (baseAddr+i16 offsetY) src
-            putPC $ p0+3
-            tick 5
-        -- absolute, X
+        0b000 -> writeIndirectX src -- (zero page, X)
+        0b001 -> writeZeroPage src
+        0b010 -> readMemory p0 >>= illegal -- XXX imm. check in caller
+        0b011 -> writeAbsolute src
+        0b100 -> writeIndirectY src -- (zero page), Y
+        0b101 -> writeZeroPageX src
+        0b110 -> writeAbsoluteY src
         0b111 -> writeAbsoluteX src
 
 {-# INLINABLE getData #-}
