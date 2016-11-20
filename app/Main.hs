@@ -19,11 +19,12 @@ import Data.Binary
 import System.Console.CmdArgs hiding ((+=))
 import Numeric
 import Control.Monad.Loops
+import System.Console.Haskeline
 import Core
 import Binary
 import Intel hiding (hexWord16, fromHex)
-import VirtualBBC
---import Vanilla
+--import VirtualBBC
+import Vanilla
 
 data Args = Args { verbose :: Bool,
                    file :: String,
@@ -102,4 +103,5 @@ main = do
                                 liftIO $ print "Done"
     -}
     flip execStateT state $ unM $ forever (inline step)
+    --runInputT defaultSettings $ flip execStateT state $ unM $ forever (inline step)
     return ()

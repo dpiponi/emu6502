@@ -145,19 +145,34 @@ aboutToBrk = do
     return $ ins == 0x00
 -}
 
+{-# INLINABLE writeAbsoluteX #-}
+writeAbsoluteX :: Emu6502 m => Word8 -> m ()
+writeAbsoluteX src = do
+    p0 <- getPC
+    offsetX <- getX
+    baseAddr <- read16 (p0+1)
+    writeMemory (baseAddr+i16 offsetX) src
+    putPC $ p0+3
+    tick 5
+
+{-# INLINABLE writeZeroPageX #-}
+writeZeroPageX :: Emu6502 m => Word8 -> m ()
+writeZeroPageX src = do
+    p0 <- getPC
+    offsetX <- getX
+    zpAddr <- readMemory (fromIntegral (p0+1))
+    addr <- read16zp (zpAddr+offsetX)
+    writeMemory addr src
+    putPC $ p0+2
+    tick 6
+
 {-# INLINABLE putData #-}
 putData :: Emu6502 m => Word8 -> Word8 -> m ()
 putData bbb src = do
     p0 <- getPC
     case bbb of
         -- (zero page, X)
-        0b000 -> do
-            offsetX <- getX
-            zpAddr <- readMemory (fromIntegral (p0+1))
-            addr <- read16zp (zpAddr+offsetX)
-            writeMemory addr src
-            putPC $ p0+2
-            tick 6
+        0b000 -> writeZeroPageX src
         -- zero page
         0b001 -> do
             addr <- readMemory (fromIntegral (p0+1))
@@ -195,12 +210,7 @@ putData bbb src = do
             putPC $ p0+3
             tick 5
         -- absolute, X
-        0b111 -> do
-            offsetX <- getX
-            baseAddr <- read16 (p0+1)
-            writeMemory (baseAddr+i16 offsetX) src
-            putPC $ p0+3
-            tick 5
+        0b111 -> writeAbsoluteX src
 
 {-# INLINABLE getData #-}
 getData :: Emu6502 m => Word8 -> m Word8
@@ -316,20 +326,22 @@ nonwhite :: Word8 -> String
 nonwhite ra | ra < 32 = "()"
 nonwhite ra = "'" ++ [BS.w2c ra] ++ "'"
 
--- XX BBC stuff
 {-# INLINABLE ins_jmp_indirect #-}
 ins_jmp_indirect :: Emu6502 m => m ()
 ins_jmp_indirect = do
+    --p0 <- getPC
+    --addr <- read16 (p0+1)
+    --liftIO $ putStrLn $ "Indirect jmp 0x" ++ showHex addr ""
     getPC >>= read16 . (+1) >>= read16 >>= putPC
     tick 5
 
 -- Need to separate R/W/RW XXX
-{-# INLINABLE withData01 #-}
-withData01 :: Emu6502 m =>
+{-# INLINABLE withData02 #-}
+withData02 :: Emu6502 m =>
               Word8 -> Bool -> Bool ->
               (Word8 -> m Word8) ->
               m ()
-withData01 bbb write useY op = case bbb of
+withData02 bbb write useY op = case bbb of
     -- immediate
     0b000 -> if write
                 then do
@@ -364,9 +376,8 @@ withData01 bbb write useY op = case bbb of
     0b011 -> do
         p0 <- getPC
         addr <- read16 (p0+1)
-        src <- readMemory addr
+        dst <- readMemory addr >>= op
         putPC $ p0+3
-        dst <- op src
         if write
             then do
                 writeMemory addr dst
@@ -492,8 +503,8 @@ ins_sbc bbb = do
     oldA <- getA
     carry <- getC
     let newA = fromIntegral oldA-fromIntegral src-if carry then 0 else 1 :: Word16
-    setN (i8 newA)
-    setZ (i8 newA)
+    setN $ i8 newA
+    setZ $ i8 newA
     putV $ (((i16 oldA `xor` i16 src) .&. 0x80) /= 0) && (((i16 oldA `xor` newA) .&. 0x80) /= 0)
     decimal <- getD
     if decimal
@@ -519,13 +530,13 @@ ins_cmp bbb = do
     src <- getData bbb
     oldA <- getA
     let new = i16 oldA-i16 src
-    setN (i8 new)
     putC $ new < 0x100
-    setZ (i8 new)
+    setN $ i8 new
+    setZ $ i8 new
 
 {-# INLINABLE ins_asl #-}
 ins_asl :: Emu6502 m => Word8 -> m ()
-ins_asl bbb = withData01 bbb True False $ \src -> do
+ins_asl bbb = withData02 bbb True False $ \src -> do
     putC $ src .&. 0x80 > 0
     let new = src `shift` 1
     setN new
@@ -534,7 +545,7 @@ ins_asl bbb = withData01 bbb True False $ \src -> do
 
 {-# INLINABLE ins_rol #-}
 ins_rol :: Emu6502 m => Word8 -> m ()
-ins_rol bbb = withData01 bbb True False $ \src -> do
+ins_rol bbb = withData02 bbb True False $ \src -> do
     fc <- getC
     putC $ src .&. 0x80 > 0
     let new = (src `shift` 1) + if fc then 1 else 0
@@ -544,7 +555,7 @@ ins_rol bbb = withData01 bbb True False $ \src -> do
 
 {-# INLINABLE ins_lsr #-}
 ins_lsr :: Emu6502 m => Word8 -> m ()
-ins_lsr bbb = withData01 bbb True False $ \src -> do
+ins_lsr bbb = withData02 bbb True False $ \src -> do
     putC $ src .&. 0x01 > 0
     let new = src `shift` (-1)
     putN False
@@ -553,7 +564,7 @@ ins_lsr bbb = withData01 bbb True False $ \src -> do
 
 {-# INLINABLE ins_ror #-}
 ins_ror :: Emu6502 m => Word8 -> m ()
-ins_ror bbb = withData01 bbb True False $ \src -> do
+ins_ror bbb = withData02 bbb True False $ \src -> do
     fc <- getC
     putC $ src .&. 0x01 > 0
     let new = (src `shift` (-1))+if fc then 0x80 else 0x00
@@ -563,11 +574,11 @@ ins_ror bbb = withData01 bbb True False $ \src -> do
 
 {-# INLINABLE ins_stx #-}
 ins_stx :: Emu6502 m => Word8 -> m ()
-ins_stx bbb = withData01 bbb True True $ \_ -> getX
+ins_stx bbb = withData02 bbb True True $ \_ -> getX
 
 {-# INLINABLE ins_ldx #-}
 ins_ldx :: Emu6502 m => Word8 -> m ()
-ins_ldx bbb = withData01 bbb False True $ \src -> do
+ins_ldx bbb = withData02 bbb False True $ \src -> do
     putX src
     setN src
     setZ src
@@ -575,7 +586,7 @@ ins_ldx bbb = withData01 bbb False True $ \src -> do
 
 {-# INLINABLE ins_dec #-}
 ins_dec :: Emu6502 m => Word8 -> m ()
-ins_dec bbb = withData01 bbb True False $ \src -> do
+ins_dec bbb = withData02 bbb True False $ \src -> do
     let new = src-1
     setN new
     setZ new
@@ -583,7 +594,7 @@ ins_dec bbb = withData01 bbb True False $ \src -> do
 
 {-# INLINABLE ins_inc #-}
 ins_inc :: Emu6502 m => Word8 -> m ()
-ins_inc bbb = withData01 bbb True False $ \src -> do
+ins_inc bbb = withData02 bbb True False $ \src -> do
     let new = src+1
     setN new
     setZ new
@@ -591,7 +602,7 @@ ins_inc bbb = withData01 bbb True False $ \src -> do
 
 {-# INLINABLE ins_bit #-}
 ins_bit :: Emu6502 m => Word8 -> m ()
-ins_bit bbb = withData01 bbb False False $ \src -> do
+ins_bit bbb = withData02 bbb False False $ \src -> do
     ra <- getA
     setN src
     putV $ src .&. 0x40 > 0
@@ -600,11 +611,11 @@ ins_bit bbb = withData01 bbb False False $ \src -> do
 
 {-# INLINABLE ins_sty #-}
 ins_sty :: Emu6502 m => Word8 -> m ()
-ins_sty bbb = withData01 bbb True False $ \_ -> getY
+ins_sty bbb = withData02 bbb True False $ \_ -> getY
 
 {-# INLINABLE ins_ldy #-}
 ins_ldy :: Emu6502 m => Word8 -> m ()
-ins_ldy bbb = withData01 bbb False False $ \src -> do
+ins_ldy bbb = withData02 bbb False False $ \src -> do
     putY src
     setN src
     setZ src
@@ -612,22 +623,22 @@ ins_ldy bbb = withData01 bbb False False $ \src -> do
 
 {-# INLINABLE ins_cpx #-}
 ins_cpx :: Emu6502 m => Word8 -> m ()
-ins_cpx bbb = withData01 bbb False False $ \src -> do
+ins_cpx bbb = withData02 bbb False False $ \src -> do
     rx <- getX
     let new = i16 rx-i16 src
-    setN (i8 new)
-    setZ (i8 new)
+    setN $ i8 new
+    setZ $ i8 new
     putC $ new < 0x100
     return 0 -- unused
 
 {-# INLINABLE ins_cpy #-}
 ins_cpy :: Emu6502 m => Word8 -> m ()
-ins_cpy bbb = withData01 bbb False False $ \src -> do
+ins_cpy bbb = withData02 bbb False False $ \src -> do
     ry <- getY
     let new = i16 ry-i16 src
     putC $ new < 0x100
-    setN (i8 new)
-    setZ (i8 new)
+    setN $ i8 new
+    setZ $ i8 new
     return 0 -- unused
 
 {-# INLINABLE ins_txs #-}
@@ -737,12 +748,12 @@ ins_pla = do
 nmi :: Emu6502 m => Bool -> m ()
 nmi sw = do
     p0 <- getPC
-    push (i8 (p0 `shift` (-8)))
-    push (i8 p0)
+    push $ i8 (p0 `shift` (-8))
+    push $ i8 p0
     putB sw
     getP >>= push . (.|. 0x20) -- always on bit
     putI True
-    read16 0xfffe >>= putPC -- irq/brk
+    read16 0xfffe >>= putPC -- irq/brk XXX
     tick 7
 
 {-# INLINABLE ins_rti #-}
@@ -759,8 +770,8 @@ ins_jsr = do
     p0 <- getPC
     getPC >>= read16 . (+1) >>= putPC
     let p2 = p0+2
-    push (i8 (p2 `shift` (-8)))
-    push (i8 p2)
+    push $ i8 (p2 `shift` (-8))
+    push $ i8 p2
     tick 6
 
 {-# INLINABLE ins_rts #-}
@@ -867,4 +878,3 @@ step = do
                 otherwise -> illegal i
     dumpState
     return ()
-

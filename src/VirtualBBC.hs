@@ -12,6 +12,7 @@ import System.Exit
 import Data.Bits
 import Data.Word
 import Numeric
+import System.Console.Haskeline
 
 import Core
 
@@ -63,7 +64,7 @@ data State6502 = S {
 
 makeLenses ''State6502
 
-newtype Monad6502 a = M { unM :: StateT State6502 IO a }
+newtype Monad6502 a = M { unM :: StateT State6502 (InputT IO) a }
     deriving (Functor, Applicative, Monad, MonadState State6502, MonadIO)
 
 instance Emu6502 Monad6502 where
@@ -189,7 +190,8 @@ instance Emu6502 Monad6502 where
                     sAddrLo <- readMemory addr
                     sAddrHi <- readMemory (addr+1)
                     let sAddr = make16 sAddrLo sAddrHi
-                    line <- liftIO $ getLine
+                    --line <- liftIO $ getLine
+                    Just line <- M $ lift $ getInputLine ""
                     let n = length line
                     forM_ [0..n-1] $ \i -> do
                         writeMemory (sAddr+i16 i) (BS.c2w (line!!i))

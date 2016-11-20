@@ -27,6 +27,7 @@ library
                      , lens
                      , binary
                      , parsec
+                     , haskeline
   default-language:    Haskell2010
 
 executable emu6502-exe
@@ -46,6 +47,7 @@ executable emu6502-exe
                      , cmdargs
                      , monad-loops
                      , parsec
+                     , haskeline
   default-language:    Haskell2010
 
 test-suite emu6502-test
