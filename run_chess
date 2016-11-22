@@ -1,4 +1,4 @@
 ca65 -o chess.o chess.s
 ld65 -t none -vm -o chess.bin chess.o -m test.map
 stack build
-stack exec emu6502-exe -- -f chess.bin -o 1000 -e 1000
+stack exec emu6502-exe -- -f b:chess.bin:1000 -e 1000

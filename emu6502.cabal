@@ -16,7 +16,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   ghc-options:         -O5 -fwarn-missing-signatures
-  exposed-modules:     Core, Intel, Binary, VirtualBBC, Vanilla
+  exposed-modules:     Core, Intel, Binary, VirtualBBC, Vanilla, Atari, TIAColors
   build-depends:       base >= 4.7 && < 5
                      , sdl2
                      , bytestring
@@ -48,6 +48,28 @@ executable emu6502-exe
                      , monad-loops
                      , parsec
                      , haskeline
+  default-language:    Haskell2010
+
+executable toy-exe
+  hs-source-dirs:      app
+  main-is:             Toy.hs
+  ghc-options:         -O5 -fwarn-missing-signatures
+  build-depends:       base
+                     , sdl2
+                     , bytestring
+                     , vector
+                     , OpenGL
+                     , array
+                     , mtl
+                     , lens
+                     , binary
+                     , emu6502
+                     , cmdargs
+                     , monad-loops
+                     , parsec
+                     , haskeline
+                     , linear
+                     , random
   default-language:    Haskell2010
 
 test-suite emu6502-test

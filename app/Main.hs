@@ -24,7 +24,8 @@ import Core
 import Binary
 import Intel hiding (hexWord16, fromHex)
 --import VirtualBBC
-import Vanilla
+--import Vanilla
+import Atari
 
 data Args = Args { verbose :: Bool,
                    file :: String,
@@ -90,18 +91,6 @@ main = do
                     _debug = verbose args}
     
     putStrLn $ "Executing from 0x" ++ showHex entryPoint ""
-    -- flip runStateT state (forever step) -- (times 20 step)
-    {-
-    flip execStateT state $ do
-                                iterateUntil id $ do
-                                    step
-                                    brk <- aboutToBrk
-                                    addr <- use (regs . pc)
-                                    return $ brk && addr/=0x09d1
-                                debug .= True
-                                dumpState
-                                liftIO $ print "Done"
-    -}
     flip execStateT state $ unM $ forever (inline step)
     --runInputT defaultSettings $ flip execStateT state $ unM $ forever (inline step)
     return ()

@@ -91,9 +91,9 @@ dumpRegisters = do
 dumpMemory :: Emu6502 m => m ()
 dumpMemory = do
     regPC <- getPC
-    b0 <- readMemory (fromIntegral regPC)
-    b1 <- readMemory (fromIntegral regPC+1)
-    b2 <- readMemory (fromIntegral regPC+2)
+    b0 <- readMemory regPC
+    b1 <- readMemory (regPC+1)
+    b2 <- readMemory (regPC+2)
     debugStr $ "(PC) = "
     debugStr $ showHex b0 "" ++ " "
     debugStr $ showHex b1 "" ++ " "
@@ -119,8 +119,8 @@ read16 addr = do
 {-# INLINABLE read16zp #-}
 read16zp :: Emu6502 m => Word8 -> m Word16
 read16zp addr = do
-    lo <- readMemory (fromIntegral addr)
-    hi <- readMemory (fromIntegral (addr+1))
+    lo <- readMemory (i16 addr)
+    hi <- readMemory (i16 addr+1)
     return $ make16 lo hi
 
 -- http://www.emulator101.com/6502-addressing-modes.html
@@ -150,7 +150,7 @@ writeIndirectX :: Emu6502 m => Word8 -> m ()
 writeIndirectX src = do
     p0 <- getPC
     offsetX <- getX
-    zpAddr <- readMemory (fromIntegral (p0+1))
+    zpAddr <- readMemory (p0+1)
     addr <- read16zp (zpAddr+offsetX)
     writeMemory addr src
     putPC $ p0+2
@@ -160,7 +160,7 @@ writeIndirectX src = do
 writeZeroPage :: Emu6502 m => Word8 -> m ()
 writeZeroPage src = do
     p0 <- getPC
-    addr <- readMemory (fromIntegral (p0+1))
+    addr <- readMemory (p0+1)
     writeMemory (i16 addr) src
     putPC $ p0+2
     tick 3
@@ -179,7 +179,7 @@ writeIndirectY :: Emu6502 m => Word8 -> m ()
 writeIndirectY src = do
     p0 <- getPC
     offsetY <- getY
-    addr <- readMemory (fromIntegral (p0+1)) >>= read16zp
+    addr <- readMemory (p0+1) >>= read16zp
     writeMemory (addr+i16 offsetY) src
     putPC $ p0+2
     tick 6
@@ -195,6 +195,7 @@ writeZeroPageX src = do
     tick 4
 
 {-# INLINABLE writeAbsoluteY #-}
+writeAbsoluteY :: Emu6502 m => Word8 -> m ()
 writeAbsoluteY src = do
     p0 <- getPC
     offsetY <- getY

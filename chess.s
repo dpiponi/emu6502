@@ -801,12 +801,12 @@ Init_6551:     lda   #$1F               ; 19.2K/8/1
 ;
 ; input chr from ACIA1 (waiting)
 ;
-syskin:        lda   $8000
+syskin:        .byte $02,$02
                RTS
 ;
 ; output to OutPut Port
 ;
-syschout:      sta  $8000
+syschout:      .byte $02,$01
                RTS                      ; done
 
 syshexout:     PHA                     ;  prints AA hex digits
