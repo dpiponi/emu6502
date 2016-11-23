@@ -67,3 +67,5 @@ playfield i | i >= 0 && i < 4 = do
 playfield i | i >= 20 && i < 40 = do
                 ctrlpf' <- use ctrlpf
                 playfield $ if ctrlpf' .&. 0b00000001 > 0 then 39-i else i-20
+
+

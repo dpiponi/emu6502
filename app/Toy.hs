@@ -35,31 +35,6 @@ times n m = m >> times (n-1) m
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (160, 192)
 
-
-player0 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
-player0 i = do
-    hpos' <- use hpos
-    pos0' <- use pos0
-    let o = hpos'-pos0' :: CInt
-    if o >= 0 && o < 8
-        then do
-            grp0' <- use grp0
-            --when (o == 7) $ pos0 .= 9999
-            return $ (grp0' `shift` (fromIntegral o-7)) .&. 1 /= 0
-        else return False
-
-player1 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
-player1 i = do
-    hpos' <- use hpos
-    pos1' <- use pos1
-    let o = hpos'-pos1' :: CInt
-    if o >= 0 && o < 8
-        then do
-            grp1' <- use grp1
-            --when (o == 7) $ pos1 .= 9999
-            return $ (grp1' `shift` (fromIntegral o-7)) .&. 1 /= 0
-        else return False
-
 stellaWsync :: (MonadIO m, MonadState Stella m) => Word8 -> m ()
 stellaWsync _ = do
     hpos' <- use hpos
@@ -68,13 +43,6 @@ stellaWsync _ = do
 stellaVsync :: (MonadIO m, MonadState Stella m) => Word8 -> m ()
 stellaVsync v = do
     return ()
-    {-vold <- use vsync-}
-    {-if (vold .&. 0b00000010 > 0) && (v .&. 0b00000010 == 0)-}
-        {-then do-}
-            {-hpos .= 0-}
-            {-vpos .= 3-}
-        {-else return ()-}
-    {-vsync .= v-}
 
 stellaVblank :: (MonadIO m, MonadState Stella m) => Word8 -> m ()
 stellaVblank v = do
@@ -88,11 +56,39 @@ stellaVblank v = do
         else return ()
     vblank .= v
 
+-- player0
+{-# INLINABLE player0 #-}
+player0 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
+player0 i = do
+    hpos' <- use hpos
+    pos0' <- use pos0
+    let o = hpos'-pos0' :: CInt
+    if o >= 0 && o < 8
+        then do
+            grp0' <- use grp0
+            --when (o == 7) $ pos0 .= 9999
+            return $ (grp0' `shift` (fromIntegral o-7)) .&. 1 /= 0
+        else return False
+
+{-# INLINABLE player1 #-}
+player1 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
+player1 i = do
+    hpos' <- use hpos
+    pos1' <- use pos1
+    let o = hpos'-pos1' :: CInt
+    if o >= 0 && o < 8
+        then do
+            grp1' <- use grp1
+            --when (o == 7) $ pos1 .= 9999
+            return $ (grp1' `shift` (fromIntegral o-7)) .&. 1 /= 0
+        else return False
+
 picy :: CInt
 picy = 40
 picx :: CInt
 picx = 68
 
+{-# INLINE stellaIdle #-}
 stellaIdle :: (MonadIO m, MonadState Stella m) => Int -> m ()
 stellaIdle 0 = return ()
 stellaIdle n = do
@@ -191,6 +187,9 @@ makeLenses ''StateAtari
 newtype MonadAtari a = M { unM :: StateT StateAtari IO a }
     deriving (Functor, Applicative, Monad, MonadState StateAtari, MonadIO)
 
+{-# SPECIALIZE player0 :: Int -> StateT Stella IO Bool #-}
+{-# SPECIALIZE player1 :: Int -> StateT Stella IO Bool #-}
+
 vsync_addr :: Word16
 vsync_addr = 0x00
 vblank_addr :: Word16
@@ -242,7 +241,7 @@ instance Emu6502 MonadAtari where
                    0x00 -> usingStella $ stellaVsync v
                    0x01 -> usingStella $ stellaVblank v
                    0x02 -> do
-                    liftIO $ print $ "Doing vblank " ++ showHex v ""
+                    --liftIO $ print $ "Doing vblank " ++ showHex v ""
                     usingStella $ stellaWsync v
                    0x06 -> usingStella $ colup0 .= v
                    0x07 -> usingStella $ colup1 .= v
