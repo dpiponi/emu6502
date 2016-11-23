@@ -69,3 +69,28 @@ playfield i | i >= 20 && i < 40 = do
                 playfield $ if ctrlpf' .&. 0b00000001 > 0 then 39-i else i-20
 
 
+{-# INLINABLE player0 #-}
+player0 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
+player0 i = do
+    hpos' <- use hpos
+    pos0' <- use pos0
+    let o = hpos'-pos0' :: CInt
+    if o >= 0 && o < 8
+        then do
+            grp0' <- use grp0
+            --when (o == 7) $ pos0 .= 9999
+            return $ (grp0' `shift` (fromIntegral o-7)) .&. 1 /= 0
+        else return False
+
+{-# INLINABLE player1 #-}
+player1 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
+player1 i = do
+    hpos' <- use hpos
+    pos1' <- use pos1
+    let o = hpos'-pos1' :: CInt
+    if o >= 0 && o < 8
+        then do
+            grp1' <- use grp1
+            --when (o == 7) $ pos1 .= 9999
+            return $ (grp1' `shift` (fromIntegral o-7)) .&. 1 /= 0
+        else return False
