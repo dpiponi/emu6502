@@ -16,7 +16,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   ghc-options:         -O5 -fwarn-missing-signatures
-  exposed-modules:     Core, Intel, Binary, VirtualBBC, Vanilla, Atari, TIAColors
+  exposed-modules:     Core, Intel, Binary, VirtualBBC, Vanilla, Atari, TIAColors, Stella
   build-depends:       base >= 4.7 && < 5
                      , sdl2
                      , bytestring
@@ -28,6 +28,7 @@ library
                      , binary
                      , parsec
                      , haskeline
+                     , random
   default-language:    Haskell2010
 
 executable emu6502-exe
