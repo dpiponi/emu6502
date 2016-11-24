@@ -45,7 +45,9 @@ data Stella = Stella {
     _pos1 :: !CInt,
     _grp0 :: !Word8,
     _grp1 :: !Word8,
-    _swchb :: !Word8
+    _swcha :: !Word8,
+    _swchb :: !Word8,
+    _inpt4 :: !Word8
 }
 
 $(makeLenses ''Stella)
@@ -287,6 +289,11 @@ readStella :: (MonadIO m, MonadState Stella m) =>
               Word16 -> m Word8
 readStella addr = 
     case addr of
+        0x0c -> use inpt4
+        0x1c -> use inpt4
+        0x2c -> use inpt4
+        0x3c -> use inpt4
+        0x280 -> use swcha
         0x282 -> use swchb
         otherwise -> return 0
 

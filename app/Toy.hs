@@ -38,6 +38,9 @@ times n m = m >> times (n-1) m
 scale :: CInt
 scale = 4
 
+isPressed Pressed = True
+isPressed Released = False
+
 main :: IO ()
 main = do
   SDL.initialize [SDL.InitVideo]
@@ -59,9 +62,10 @@ main = do
   --readBinary memory "skiing.bin" 0xf000
   --readBinary memory "kernel21.bin" 0xf000
   --readBinary memory "kernel22.bin" 0xf000
-  readBinary memory "adventure.rom" 0xf000
+  --readBinary memory "adventure.rom" 0xf000
+  readBinary memory "combat.bin" 0xf000
 
-  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0b00001011
+  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0
   let state = S { _mem = memory,  _clock = 0, _regs = R 0xf000 0 0 0 0 0xff,
                     _debug = False,
                     _stella = stella}
@@ -74,13 +78,23 @@ main = do
         forM_ events $ \event ->
             case eventPayload event of
                 KeyboardEvent (KeyboardEventData win motion rep sym) -> do
+                    let pressed = isPressed motion
+                    liftIO $ print sym
                     case keysymScancode sym of
-                        SDL.ScancodeC -> case motion of
-                            Pressed -> usingStella $ swchb . bitAt 1 .= False
-                            Released -> usingStella $ swchb .bitAt 1 .= True
-                        SDL.ScancodeV -> case motion of
-                            Pressed -> usingStella $ swchb . bitAt 0 .= False
-                            Released -> usingStella $ swchb .bitAt 0 .= True
+                        SDL.ScancodeUp -> usingStella $ swcha . bitAt 4 .= pressed
+                        SDL.ScancodeDown -> usingStella $ swcha . bitAt 5 .= pressed
+                        SDL.ScancodeLeft -> usingStella $ swcha . bitAt 6 .= pressed
+                        SDL.ScancodeRight -> usingStella $ swcha . bitAt 7 .= pressed
+                        SDL.ScancodeC -> usingStella $ swchb . bitAt 1 .= not pressed
+                        SDL.ScancodeV -> usingStella $ swchb . bitAt 0 .= not pressed
+                        SDL.ScancodeSpace -> usingStella $ do
+                            vblank' <- use vblank
+                            let latch = vblank' .&. 0x40 /= 0
+                            case (latch, pressed) of
+                                (False, False) -> inpt4 . bitAt 7 .= True
+                                (False, True) -> inpt4 . bitAt 7 .= False
+                                (True, False) -> return ()
+                                (True, True) -> inpt4 . bitAt 7 .= False
                 otherwise -> return ()
 
         liftIO $ lockSurface screenSurface
