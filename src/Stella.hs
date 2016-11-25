@@ -74,18 +74,63 @@ playfield i | i >= 20 && i < 40 = do
                 ctrlpf' <- use ctrlpf
                 playfield $ if ctrlpf' .&. 0b00000001 > 0 then 39-i else i-20
 
+-- Stella programmer's guide p.40
 {-# INLINABLE player0 #-}
 player0 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
 player0 i = do
     hpos' <- use hpos
     pos0' <- use pos0
     let o = hpos'-pos0' :: CInt
-    if o >= 0 && o < 8
-        then do
-            grp0' <- use grp0
-            --when (o == 7) $ pos0 .= 9999
-            return $ (grp0' `shift` (fromIntegral o-7)) .&. 1 /= 0
-        else return False
+    sizeCopies <- (0b111 .&.) <$> use nusiz0
+    case sizeCopies of
+        0b000 -> -- one copy
+            if o >= 0 && o < 8
+                then do
+                    grp0' <- use grp0
+                    return $ (grp0' `shift` (fromIntegral o-7)) .&. 1 /= 0
+                else return False
+        0b001 -> -- two copies close
+            if o >= 0 && o < 8 || o >= 16 && o < 24
+                then do
+                    grp0' <- use grp0
+                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else return False
+        0b010 -> -- two copies - med
+            if o >= 0 && o < 8 || o >= 32 && o < 40
+                then do
+                    grp0' <- use grp0
+                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else return False
+        0b011 -> -- three copies close
+            if o >= 0 && o < 8 || o >= 16 && o < 24 || o >= 32 && o < 40
+                then do
+                    grp0' <- use grp0
+                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else return False
+        0b100 -> -- two copies wide
+            if o >= 0 && o < 8 || o >= 64 && o < 72
+                then do
+                    grp0' <- use grp0
+                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else return False
+        0b101 -> -- double size player
+            if o >= 0 && o < 16
+                then do
+                    grp0' <- use grp0
+                    return $ (grp0' `shift` ((fromIntegral o `shift` (-1))-7)) .&. 1 /= 0
+                else return False
+        0b110 -> -- three copies medium
+            if o >= 0 && o < 8 || o >= 32 && o < 40 || o >= 64 && o < 72
+                then do
+                    grp0' <- use grp0
+                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else return False
+        0b111 -> -- quad sized player
+            if o >= 0 && o < 32
+                then do
+                    grp0' <- use grp0
+                    return $ (grp0' `shift` ((fromIntegral o `shift` (-2))-7)) .&. 1 /= 0
+                else return False
 
 {-# INLINABLE player1 #-}
 player1 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
@@ -171,13 +216,14 @@ stellaIdle n = do
         pplayfield <- Pixel <$> playfield (fromIntegral $ x `shift` (-2)) <*> use colupf
         pplayer0 <- Pixel <$> player0 (fromIntegral hpos') <*> use colup0
         pplayer1 <- Pixel <$> player1 (fromIntegral hpos') <*> use colup1
-        --
-        -- Get priority
+        
+        -- Get ordering priority
         ctrlpf' <- use ctrlpf
         let Pixel _ final = pbackground `mappend`
                             if ctrlpf' .&. 0b00000100 /= 0
                                 then pplayer1 `mappend` pplayer0 `mappend` pplayfield
                                 else pplayfield `mappend` pplayer1 `mappend` pplayer0
+
         liftIO $ pokeElemOff ptr' (fromIntegral i) (lut!(final `shift` (-1)))
     hpos += 1
     hpos' <- use hpos

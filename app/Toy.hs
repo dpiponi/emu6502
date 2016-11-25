@@ -92,10 +92,10 @@ main = do
                     let pressed = isPressed motion
                     liftIO $ print sym
                     case keysymScancode sym of
-                        SDL.ScancodeUp -> usingStella $ swcha . bitAt 4 .= pressed
-                        SDL.ScancodeDown -> usingStella $ swcha . bitAt 5 .= pressed
-                        SDL.ScancodeLeft -> usingStella $ swcha . bitAt 6 .= pressed
-                        SDL.ScancodeRight -> usingStella $ swcha . bitAt 7 .= pressed
+                        SDL.ScancodeDown -> usingStella $ swcha . bitAt 4 .= pressed
+                        SDL.ScancodeUp -> usingStella $ swcha . bitAt 5 .= pressed
+                        SDL.ScancodeRight -> usingStella $ swcha . bitAt 6 .= pressed
+                        SDL.ScancodeLeft -> usingStella $ swcha . bitAt 7 .= pressed
                         SDL.ScancodeC -> usingStella $ swchb . bitAt 1 .= not pressed
                         SDL.ScancodeV -> usingStella $ swchb . bitAt 0 .= not pressed
                         SDL.ScancodeSpace -> usingStella $ do
