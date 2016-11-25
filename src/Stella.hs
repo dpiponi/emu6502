@@ -65,7 +65,18 @@ data Stella = Stella {
     _cxppmm :: !Word8,
     _enabl :: !Word8,
     _mpos0 :: !CInt,
-    _mpos1 :: !CInt
+    _mpos1 :: !CInt,
+    _bpos :: !CInt,
+    _resmp0 :: !Word8,
+    _resmp1 :: !Word8,
+    _resbl :: !Word8,
+    _hmm0 :: !Word8,
+    _hmm1 :: !Word8,
+    _hmbl :: !Word8,
+    _inpt5 :: !Word8,
+    _intim :: !Word8,
+    _subtimer :: !CInt,
+    _interval :: !CInt
 }
 
 $(makeLenses ''Stella)
@@ -147,22 +158,42 @@ player1 = do
 {-# INLINABLE missile0 #-}
 missile0 :: (MonadIO m, MonadState Stella m) => m Bool
 missile0 = do
-    hpos' <- use hpos
-    mpos1' <- use mpos1
-    let o = hpos'-mpos1' :: CInt
-    nusiz0' <- use nusiz0
-    let missileSize = 1 `shift` (fromIntegral ((nusiz0' `shift` (fromIntegral $ -4)) .&. 0b11))
-    return $ o >= 0 && o < missileSize
+    enabled <- use (enam0 . bitAt 1)
+    if enabled
+        then do
+            hpos' <- use hpos
+            mpos1' <- use mpos1
+            let o = hpos'-mpos1' :: CInt
+            nusiz0' <- use nusiz0
+            let missileSize = 1 `shift` (fromIntegral ((nusiz0' `shift` (fromIntegral $ -4)) .&. 0b11))
+            return $ o >= 0 && o < missileSize
+        else return False
 
 {-# INLINABLE missile1 #-}
 missile1 :: (MonadIO m, MonadState Stella m) => m Bool
 missile1 = do
-    hpos' <- use hpos
-    mpos1' <- use mpos1
-    let o = hpos'-mpos1' :: CInt
-    nusiz1' <- use nusiz1
-    let missileSize = 1 `shift` (fromIntegral ((nusiz1' `shift` (fromIntegral $ -4)) .&. 0b11))
-    return $ o >= 0 && o < missileSize
+    enabled <- use (enam1 . bitAt 1)
+    if enabled
+        then do
+            hpos' <- use hpos
+            mpos1' <- use mpos1
+            let o = hpos'-mpos1' :: CInt
+            nusiz1' <- use nusiz1
+            let missileSize = 1 `shift` (fromIntegral ((nusiz1' `shift` (fromIntegral $ -4)) .&. 0b11))
+            return $ o >= 0 && o < missileSize
+        else return False
+
+{-# INLINABLE ball #-}
+ball :: (MonadIO m, MonadState Stella m) => m Bool
+ball = do
+    enabled <- use (enabl . bitAt 1)
+    if enabled
+        then do
+            o <- (-) <$> use hpos <*> use bpos
+            ctrlpf' <- use ctrlpf
+            let ballSize = 1 `shift` (fromIntegral ((ctrlpf' `shift` (fromIntegral $ -4)) .&. 0b11))
+            return $ o >= 0 && o < ballSize
+        else return False
 
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (160, 192)
@@ -170,6 +201,15 @@ screenWidth, screenHeight :: CInt
 {-# INLINE clockMove #-}
 clockMove :: Word8 -> CInt
 clockMove i = fromIntegral ((fromIntegral i :: Int8) `shift` (-4))
+
+{-# INLINE stellaHmclr #-}
+stellaHmclr :: (MonadIO m, MonadState Stella m) => m ()
+stellaHmclr = do
+    hmp0 .= 0
+    hmp1 .= 0
+    hmm0 .= 0
+    hmm1 .= 0
+    hmbl .= 0
 
 {-# INLINE stellaCxclr #-}
 stellaCxclr :: (MonadIO m, MonadState Stella m) => m ()
@@ -186,9 +226,24 @@ stellaCxclr = do
 {-# INLINE stellaHmove #-}
 stellaHmove :: (MonadIO m, MonadState Stella m) => m ()
 stellaHmove = do
-    offset <- use hmp0
-    ppos0 -= clockMove offset
-    ppos1 -= clockMove offset
+    poffset0 <- use hmp0
+    ppos0 -= clockMove poffset0
+    poffset1 <- use hmp1
+    ppos1 -= clockMove poffset1
+    moffset0 <- use hmm0
+    mpos0 -= clockMove moffset0
+    moffset1 <- use hmm1
+    mpos1 -= clockMove moffset1
+    boffset <- use hmbl
+    bpos -= clockMove boffset
+
+{-# INLINE stellaResmp0 #-}
+stellaResmp0 :: (MonadIO m, MonadState Stella m) => m ()
+stellaResmp0 = use ppos0 >>= (mpos0 .=) -- XXX
+
+{-# INLINE stellaResmp1 #-}
+stellaResmp1 :: (MonadIO m, MonadState Stella m) => m ()
+stellaResmp1 = use ppos1 >>= (mpos1 .=) -- XXX
 
 {-# INLINE stellaWsync #-}
 stellaWsync :: (MonadIO m, MonadState Stella m) => m ()
@@ -205,6 +260,10 @@ stellaVsync v = do
 stellaVblank :: (MonadIO m, MonadState Stella m) => Word8 -> m ()
 stellaVblank v = do
     vold <- use vblank
+    -- Set latches for INPT4 and INPT5
+    when (vold .&. 0b01000000 /= 0) $ do
+        inpt4 . bitAt 7 .= True
+        inpt5 . bitAt 7 .= True
     --liftIO $ putStrLn $ show vold ++ " -> " ++ show v
     if (vold .&. 0b00000010 /= 0) && (v .&. 0b00000010 == 0)
         then do
@@ -228,9 +287,61 @@ instance Monoid Pixel where
     _ `mappend` pixel@(Pixel True _) = pixel
     pixel `mappend` (Pixel False _) = pixel
 
+{-# INLINABLE detectCollisions #-}
+detectCollisions :: (MonadIO m, MonadState Stella m) => CInt -> m Word8
+detectCollisions x = do
+    -- Assemble colours
+    pbackground <- Pixel True <$> use colubk
+    pplayfield <- Pixel <$> playfield (fromIntegral $ x `shift` (-2)) <*> use colupf
+    pplayer0 <- Pixel <$> player0 <*> use colup0
+    pplayer1 <- Pixel <$> player1 <*> use colup1
+    pmissile0 <- Pixel <$> missile0 <*> use colup0
+    pmissile1 <- Pixel <$> missile1 <*> use colup1
+    pball <- Pixel <$> ball <*> use colupf
+
+    cxm0p . bitAt 7 ||= (plogic pmissile0 && plogic pplayer1)
+    cxm0p . bitAt 6 ||= (plogic pmissile0 && plogic pplayer0)
+    cxm1p . bitAt 7 ||= (plogic pmissile1 && plogic pplayer0)
+    cxm1p . bitAt 6 ||= (plogic pmissile1 && plogic pplayer1)
+    cxp0fb . bitAt 7 ||= (plogic pplayer0 && plogic pplayfield)
+    cxp0fb . bitAt 6 ||= (plogic pplayer0 && plogic pball)
+    cxp1fb . bitAt 7 ||= (plogic pplayer1 && plogic pplayfield)
+    cxp1fb . bitAt 6 ||= (plogic pplayer1 && plogic pball)
+    cxm0fb . bitAt 7 ||= (plogic pmissile0 && plogic pplayfield)
+    cxm0fb . bitAt 6 ||= (plogic pmissile0 && plogic pball)
+    cxm1fb . bitAt 7 ||= (plogic pmissile1 && plogic pplayfield)
+    cxm1fb . bitAt 6 ||= (plogic pmissile1 && plogic pball)
+    cxblpf . bitAt 7 ||= (plogic pball && plogic pplayfield)
+    cxppmm . bitAt 7 ||= (plogic pplayer0 && plogic pplayer1)
+    cxppmm . bitAt 6 ||= (plogic pmissile0 && plogic pmissile1)
+    
+    -- Get ordering priority
+    ctrlpf' <- use ctrlpf
+    let Pixel _ final = pbackground `mappend`
+                        if ctrlpf' .&. 0b00000100 /= 0
+                            then mconcat [pplayer1, pmissile1, pplayer0, pmissile0, pplayfield, pball]
+                            else mconcat [pball, pplayfield, pplayer1, pmissile1, pplayer0, pmissile0]
+    return final
+
+{-# INLINABLE stellaTick #-}
 stellaTick :: (MonadIO m, MonadState Stella m) => Int -> m ()
 stellaTick 0 = return ()
 stellaTick n = do
+    -- Interval timer
+    subtimer' <- use subtimer
+    let subtimer'' = subtimer'-1
+    subtimer .= subtimer''
+    when (subtimer' == 0) $ do
+        interval' <- use interval
+        subtimer .= 3*interval'-1
+        intim' <- use intim
+        let intim'' = intim'-1
+        intim .= intim''
+        when (intim' == 0) $ do
+            subtimer .= 3*1-1
+            interval .= 1
+    
+    -- Display
     hpos' <- use hpos
     vpos' <- use vpos
     when (vpos' >= picy && vpos' < picy+192 && hpos' >= picx) $ do
@@ -241,30 +352,7 @@ stellaTick n = do
         let y = vpos'-picy
         let i = screenWidth*y+x
 
-        -- Assemble colours
-        pbackground <- Pixel True <$> use colubk
-        pplayfield <- Pixel <$> playfield (fromIntegral $ x `shift` (-2)) <*> use colupf
-        pplayer0 <- Pixel <$> player0 <*> use colup0
-        pplayer1 <- Pixel <$> player1 <*> use colup1
-        pmissile0 <- Pixel <$> missile0 <*> use colup0
-        pmissile1 <- Pixel <$> missile1 <*> use colup1
-
-        -- Collision detection
-        cxm0p . bitAt 7 ||= (plogic pmissile0 && plogic pplayer1)
-        cxm0p . bitAt 6 ||= (plogic pmissile0 && plogic pplayer0)
-        cxm1p . bitAt 7 ||= (plogic pmissile1 && plogic pplayer0)
-        cxm1p . bitAt 6 ||= (plogic pmissile1 && plogic pplayer1)
-        cxp0fb . bitAt 7 ||= (plogic pplayer0 && plogic pplayfield)
-        cxp1fb . bitAt 7 ||= (plogic pplayer1 && plogic pplayfield)
-        cxppmm . bitAt 7 ||= (plogic pplayer0 && plogic pplayer1)
-        cxppmm . bitAt 6 ||= (plogic pmissile0 && plogic pmissile1)
-        
-        -- Get ordering priority
-        ctrlpf' <- use ctrlpf
-        let Pixel _ final = pbackground `mappend`
-                            if ctrlpf' .&. 0b00000100 /= 0
-                                then pplayer1 `mappend` pmissile1 `mappend` pplayer0 `mappend` pmissile0 `mappend` pplayfield
-                                else pplayfield `mappend` pplayer1 `mappend` pmissile1 `mappend` pplayer0 `mappend` pmissile0
+        final <- detectCollisions x
 
         liftIO $ pokeElemOff ptr' (fromIntegral i) (lut!(final `shift` (-1)))
     hpos += 1
@@ -379,29 +467,56 @@ writeStella :: (MonadIO m, MonadState Stella m) =>
                Word16 -> Word8 -> m ()
 writeStella addr v = 
     case addr of
-       0x00 -> stellaVsync v    -- VSYNC
-       0x01 -> stellaVblank v   -- VBLANK
-       0x02 -> stellaWsync      -- WSYNC
-       0x04 -> nusiz0 .= v      -- NUSIZ0
-       0x05 -> nusiz1 .= v      -- NUSIZ1
-       0x06 -> colup0 .= v      -- COLUP0
-       0x07 -> colup1 .= v      -- COLUP1
-       0x08 -> colupf .= v      -- COLUPF
-       0x09 -> colubk .= v      -- COLUBK
-       0x0a -> ctrlpf .= v      -- COLUPF
-       0x0d -> pf0 .= v         -- PF0
-       0x0e -> pf1 .= v         -- PF1
-       0x0f -> pf2 .= v         -- PF2
+       0x00 -> stellaVsync v             -- VSYNC
+       0x01 -> stellaVblank v            -- VBLANK
+       0x02 -> stellaWsync               -- WSYNC
+       0x04 -> nusiz0 .= v               -- NUSIZ0
+       0x05 -> nusiz1 .= v               -- NUSIZ1
+       0x06 -> colup0 .= v               -- COLUP0
+       0x07 -> colup1 .= v               -- COLUP1
+       0x08 -> colupf .= v               -- COLUPF
+       0x09 -> colubk .= v               -- COLUBK
+       0x0a -> ctrlpf .= v               -- COLUPF
+       0x0d -> pf0 .= v                  -- PF0
+       0x0e -> pf1 .= v                  -- PF1
+       0x0f -> pf2 .= v                  -- PF2
        0x10 -> use hpos >>= (ppos0 .=)   -- RESP0
        0x11 -> use hpos >>= (ppos1 .=)   -- RESP1
-       0x1b -> grp0 .= v        -- GRP0
-       0x1c -> grp1 .= v        -- GRP1
-       0x1d -> enam0 .= v       -- ENAM0
-       0x1e -> enam1 .= v       -- ENAM1
-       0x20 -> hmp0 .= v        -- HMP0
-       0x21 -> hmp1 .= v        -- HMP1
-       0x2a -> stellaHmove      -- HMOVE
-       0x2c -> stellaCxclr      -- CXCLR
+       0x12 -> use hpos >>= (mpos0 .=)   -- RESM0
+       0x13 -> use hpos >>= (mpos1 .=)   -- RESM1
+       0x14 -> use hpos >>= (bpos .=)    -- RESBL
+       0x1b -> grp0 .= v                 -- GRP0
+       0x1c -> grp1 .= v                 -- GRP1
+       0x1d -> (liftIO $ putStrLn $ "ENAM0="++showHex v "") >> enam0 .= v                -- ENAM0
+       0x1e -> (liftIO $ putStrLn $ "ENAM1="++showHex v "") >> enam1 .= v                -- ENAM1
+       0x1f -> (liftIO $ putStrLn $ "ENABL="++showHex v "") >> enabl .= v                -- ENABL
+       0x20 -> hmp0 .= v                 -- HMP0
+       0x21 -> hmp1 .= v                 -- HMP1
+       0x28 -> do
+        resmp0' <- use (resmp0 . bitAt 1)
+        when (resmp0') $ use ppos0 >>= (mpos0 .=)  -- RESMP0
+       0x29 -> do
+        resmp1' <- use (resmp1 . bitAt 1)
+        when (resmp1') $ use ppos1 >>= (mpos1 .=)  -- RESMP1
+       0x2a -> stellaHmove               -- HMOVE
+       0x2b -> stellaHmclr               -- HMCLR
+       0x2c -> stellaCxclr               -- CXCLR
+       0x294 -> do                       -- TIM1T
+        interval .= 1
+        subtimer .= 1*3-1
+        intim .= v
+       0x295 -> do                       -- TIM8T
+        interval .= 8
+        subtimer .= 8*3-1
+        intim .= v
+       0x296 -> do                       -- TIM64T
+        interval .= 64
+        subtimer .= 64*3-1
+        intim .= v
+       0x297 -> do                       -- TIM1024T
+        interval .= 1024
+        subtimer .= 1024*3-1
+        intim .= v
        otherwise -> return ()
         --liftIO $ putStrLn $ "writing TIA 0x" ++ showHex addr ""
 
@@ -478,7 +593,7 @@ instance Emu6502 MonadAtari where
                         m <- use mem
                         liftIO $ writeArray m (fromIntegral addr .&. 0xff) v
                     else if addr >= 0x280 && addr < 0x298
-                            then return ()
+                            then usingStella $ writeStella addr v
                             else if addr >= 0xf000
                                 then do
                                     m <- use mem

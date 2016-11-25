@@ -54,7 +54,7 @@ executable emu6502-exe
 executable toy-exe
   hs-source-dirs:      app
   main-is:             Toy.hs
-  ghc-options:         -O5 -fwarn-missing-signatures -fsimpl-tick-factor=200
+  ghc-options:         -O5 -fwarn-missing-signatures -fsimpl-tick-factor=300
   build-depends:       base
                      , sdl2
                      , bytestring

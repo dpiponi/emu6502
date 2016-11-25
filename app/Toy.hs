@@ -77,7 +77,7 @@ main = do
   --readBinary memory "exp.bin" 0xf000
   readBinary memory (file args) 0xf000
 
-  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
   let state = S { _mem = memory,  _clock = 0, _regs = R 0xf000 0 0 0 0 0xff,
                     _debug = False,
                     _stella = stella}
@@ -91,7 +91,7 @@ main = do
             case eventPayload event of
                 KeyboardEvent (KeyboardEventData win motion rep sym) -> do
                     let pressed = isPressed motion
-                    liftIO $ print sym
+                    --liftIO $ print sym
                     case keysymScancode sym of
                         SDL.ScancodeUp -> usingStella $ swcha . bitAt 4 .= not pressed
                         SDL.ScancodeDown -> usingStella $ swcha . bitAt 5 .= not pressed
@@ -101,9 +101,9 @@ main = do
                         SDL.ScancodeV -> usingStella $ swchb . bitAt 0 .= not pressed
                         SDL.ScancodeSpace -> usingStella $ do
                             latch <- use (vblank . bitAt 6)
+                            liftIO $ putStrLn $ "Latch = " ++ show (latch, pressed)
                             case (latch, pressed) of
-                                (False, False) -> inpt4 . bitAt 7 .= True
-                                (False, True) -> inpt4 . bitAt 7 .= False
+                                (False, _) -> inpt4 . bitAt 7 .= not pressed
                                 (True, False) -> return ()
                                 (True, True) -> inpt4 . bitAt 7 .= False
                 otherwise -> return ()
