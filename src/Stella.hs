@@ -59,6 +59,9 @@ data Stella = Stella {
     _cxm1p :: !Word8,
     _cxp0fb :: !Word8,
     _cxp1fb :: !Word8,
+    _cxm0fb :: !Word8,
+    _cxm1fb :: !Word8,
+    _cxblpf :: !Word8,
     _cxppmm :: !Word8
 }
 
@@ -157,6 +160,18 @@ screenWidth, screenHeight :: CInt
 clockMove :: Word8 -> CInt
 clockMove i = fromIntegral ((fromIntegral i :: Int8) `shift` (-4))
 
+{-# INLINE stellaCxclr #-}
+stellaCxclr :: (MonadIO m, MonadState Stella m) => m ()
+stellaCxclr = do
+    cxm0fb .= 0
+    cxm1fb .= 0
+    cxp0fb .= 0
+    cxp1fb .= 0
+    cxm0fb .= 0
+    cxm1fb .= 0
+    cxblpf .= 0
+    cxppmm .= 0
+
 {-# INLINE stellaHmove #-}
 stellaHmove :: (MonadIO m, MonadState Stella m) => m ()
 stellaHmove = do
@@ -195,7 +210,7 @@ picy = 40
 picx :: CInt
 picx = 68
 
-data Pixel = Pixel !Bool !Word8
+data Pixel = Pixel { plogic :: !Bool, pcolor :: !Word8 }
 
 instance Monoid Pixel where
     mempty = Pixel False 0
@@ -221,6 +236,11 @@ stellaIdle n = do
         pplayfield <- Pixel <$> playfield (fromIntegral $ x `shift` (-2)) <*> use colupf
         pplayer0 <- Pixel <$> player0 (fromIntegral hpos') <*> use colup0
         pplayer1 <- Pixel <$> player1 (fromIntegral hpos') <*> use colup1
+
+        -- Collision detection
+        cxp0fb . bitAt 7 ||= (plogic pplayer0 && plogic pplayfield)
+        cxp1fb . bitAt 7 ||= (plogic pplayer1 && plogic pplayfield)
+        cxppmm . bitAt 7 ||= (plogic pplayer0 && plogic pplayer1)
         
         -- Get ordering priority
         ctrlpf' <- use ctrlpf
@@ -364,6 +384,7 @@ writeStella addr v =
        0x20 -> hmp0 .= v        -- HMP0
        0x21 -> hmp1 .= v        -- HMP1
        0x2a -> stellaHmove      -- HMOVE
+       0x2c -> stellaCxclr      -- CXCLR
        otherwise -> return ()
         --liftIO $ putStrLn $ "writing TIA 0x" ++ showHex addr ""
 
@@ -372,9 +393,41 @@ readStella :: (MonadIO m, MonadState Stella m) =>
               Word16 -> m Word8
 readStella addr = 
     case addr of
+        0x00 -> use cxm0p
+        0x01 -> use cxm1p
+        0x02 -> use cxp0fb
+        0x03 -> use cxp1fb
+        0x04 -> use cxm0fb
+        0x05 -> use cxm1fb
+        0x06 -> use cxblpf
+        0x07 -> use cxppmm
         0x0c -> use inpt4
+        0x10 -> use cxm0p
+        0x11 -> use cxm1p
+        0x12 -> use cxp0fb
+        0x13 -> use cxp1fb
+        0x14 -> use cxm0fb
+        0x15 -> use cxm1fb
+        0x16 -> use cxblpf
+        0x17 -> use cxppmm
         0x1c -> use inpt4
+        0x20 -> use cxm0p
+        0x21 -> use cxm1p
+        0x22 -> use cxp0fb
+        0x23 -> use cxp1fb
+        0x24 -> use cxm0fb
+        0x25 -> use cxm1fb
+        0x26 -> use cxblpf
+        0x27 -> use cxppmm
         0x2c -> use inpt4
+        0x30 -> use cxm0p
+        0x31 -> use cxm1p
+        0x32 -> use cxp0fb
+        0x33 -> use cxp1fb
+        0x34 -> use cxm0fb
+        0x35 -> use cxm1fb
+        0x36 -> use cxblpf
+        0x37 -> use cxppmm
         0x3c -> use inpt4
         0x280 -> use swcha
         0x282 -> use swchb

@@ -76,7 +76,7 @@ main = do
   --readBinary memory "exp.bin" 0xf000
   readBinary memory (file args) 0xf000
 
-  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0 0 0 0 0 0 0 0 0 0 0 0
+  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
   let state = S { _mem = memory,  _clock = 0, _regs = R 0xf000 0 0 0 0 0xff,
                     _debug = False,
                     _stella = stella}
