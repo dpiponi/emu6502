@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BinaryLiterals #-}
@@ -30,6 +31,12 @@ import Data.Array.IO
 import Data.Bits
 import Data.Bits.Lens
 import Stella
+import System.Console.CmdArgs hiding ((+=))
+
+data Args = Args { file :: String } deriving (Show, Data, Typeable)
+
+clargs :: Args
+clargs = Args { file = "adventure.bin" }
 
 times :: (Integral n, Monad m) => n -> m a -> m ()
 times 0 _ = return ()
@@ -43,6 +50,7 @@ isPressed Released = False
 
 main :: IO ()
 main = do
+  args <- cmdArgs clargs
   SDL.initialize [SDL.InitVideo]
   window <- SDL.createWindow "SDL Tutorial" SDL.defaultWindow { SDL.windowInitialSize = V2 (scale*screenWidth) (scale*screenHeight) }
   SDL.showWindow window
@@ -63,9 +71,12 @@ main = do
   --readBinary memory "kernel21.bin" 0xf000
   --readBinary memory "kernel22.bin" 0xf000
   --readBinary memory "adventure.rom" 0xf000
-  readBinary memory "combat.bin" 0xf000
+  --readBinary memory "combat.bin" 0xf000
+  --readBinary memory "joustpong.bin" 0xf000
+  --readBinary memory "exp.bin" 0xf000
+  readBinary memory (file args) 0xf000
 
-  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0
+  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0 0 0 0 0 0 0
   let state = S { _mem = memory,  _clock = 0, _regs = R 0xf000 0 0 0 0 0xff,
                     _debug = False,
                     _stella = stella}

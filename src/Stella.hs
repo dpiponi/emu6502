@@ -8,8 +8,11 @@ module Stella where
 import Core
 import Binary
 import Foreign.C.Types
+import Data.Int
 import Foreign.Ptr
 import Foreign.Storable
+import Control.Applicative
+import Data.Monoid
 import Data.Word
 import System.Random
 import Control.Monad
@@ -39,15 +42,19 @@ data Stella = Stella {
     _ctrlpf :: !Word8,
     _colup0 :: ! Word8,
     _colup1 :: !Word8,
-    -- _resp0 :: !Word8,
-    -- _resp1 :: !Word8,
     _pos0 :: !CInt,
     _pos1 :: !CInt,
     _grp0 :: !Word8,
     _grp1 :: !Word8,
     _swcha :: !Word8,
     _swchb :: !Word8,
-    _inpt4 :: !Word8
+    _inpt4 :: !Word8,
+    _enam0 :: !Word8,
+    _enam1 :: !Word8,
+    _hmp0 :: !Word8,
+    _hmp1 :: !Word8,
+    _nusiz0 :: !Word8,
+    _nusiz1 :: !Word8
 }
 
 $(makeLenses ''Stella)
@@ -96,9 +103,20 @@ player1 i = do
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (160, 192)
 
+{-# INLINE clockMove #-}
+clockMove :: Word8 -> CInt
+clockMove i = fromIntegral ((fromIntegral i :: Int8) `shift` (-4))
+
+{-# INLINE stellaHmove #-}
+stellaHmove :: (MonadIO m, MonadState Stella m) => m ()
+stellaHmove = do
+    offset <- use hmp0
+    pos0 -= clockMove offset
+    pos1 -= clockMove offset
+
 {-# INLINE stellaWsync #-}
-stellaWsync :: (MonadIO m, MonadState Stella m) => Word8 -> m ()
-stellaWsync _ = do
+stellaWsync :: (MonadIO m, MonadState Stella m) => m ()
+stellaWsync = do
     hpos' <- use hpos
     stellaIdle (228-fromIntegral hpos')
 
@@ -127,6 +145,13 @@ picy = 40
 picx :: CInt
 picx = 68
 
+data Pixel = Pixel !Bool !Word8
+
+instance Monoid Pixel where
+    mempty = Pixel False 0
+    _ `mappend` pixel@(Pixel True _) = pixel
+    pixel `mappend` (Pixel False _) = pixel
+
 {-# INLINE stellaIdle #-}
 stellaIdle :: (MonadIO m, MonadState Stella m) => Int -> m ()
 stellaIdle 0 = return ()
@@ -140,18 +165,20 @@ stellaIdle n = do
         let x = hpos'-picx
         let y = vpos'-picy
         let i = screenWidth*y+x
-        -- The final colour composite!
-        c <- use colubk
-        pb <- playfield (fromIntegral $ x `shift` (-2))
-        pc <- use colupf -- XXX
-        let c' = if pb then pc else c
-        p0 <- player0 (fromIntegral hpos')
-        pc0 <- use colup0 -- XXX
-        let c'' = if p0 then pc0 else c'
-        p1 <- player1 (fromIntegral hpos')
-        pc1 <- use colup1 -- XXX
-        let c''' = if p1 then pc1 else c''
-        liftIO $ pokeElemOff ptr' (fromIntegral i) (lut!(c''' `shift` (-1)))
+
+        -- Assemble colours
+        pbackground <- Pixel True <$> use colubk
+        pplayfield <- Pixel <$> playfield (fromIntegral $ x `shift` (-2)) <*> use colupf
+        pplayer0 <- Pixel <$> player0 (fromIntegral hpos') <*> use colup0
+        pplayer1 <- Pixel <$> player1 (fromIntegral hpos') <*> use colup1
+        --
+        -- Get priority
+        ctrlpf' <- use ctrlpf
+        let Pixel _ final = pbackground `mappend`
+                            if ctrlpf' .&. 0b00000100 /= 0
+                                then pplayer1 `mappend` pplayer0 `mappend` pplayfield
+                                else pplayfield `mappend` pplayer1 `mappend` pplayer0
+        liftIO $ pokeElemOff ptr' (fromIntegral i) (lut!(final `shift` (-1)))
     hpos += 1
     hpos' <- use hpos
     when (hpos' >= picx+160) $ do
@@ -228,7 +255,7 @@ newtype MonadAtari a = M { unM :: StateT StateAtari IO a }
 
 {-# SPECIALIZE player0 :: Int -> StateT Stella IO Bool #-}
 {-# SPECIALIZE player1 :: Int -> StateT Stella IO Bool #-}
-{-# SPECIALIZE stellaWsync :: Word8 -> StateT Stella IO () #-}
+{-# SPECIALIZE stellaWsync :: StateT Stella IO () #-}
 {-# SPECIALIZE stellaVsync :: Word8 -> StateT Stella IO () #-}
 {-# SPECIALIZE stellaVblank :: Word8 -> StateT Stella IO () #-}
 {-# SPECIALIZE stellaIdle :: Int -> StateT Stella IO () #-}
@@ -264,23 +291,28 @@ writeStella :: (MonadIO m, MonadState Stella m) =>
                Word16 -> Word8 -> m ()
 writeStella addr v = 
     case addr of
-       0x00 -> stellaVsync v
-       0x01 -> stellaVblank v
-       0x02 -> stellaWsync v
-       0x06 -> colup0 .= v
-       0x07 -> colup1 .= v
-       0x08 -> colupf .= v
-       0x09 -> colubk .= v
-       0x0a -> ctrlpf .= v
-       0x0d -> pf0 .= v
-       0x0e -> pf1 .= v
-       0x0f -> pf2 .= v
-       0x10 -> use hpos >>= (pos0 .=)
-       0x11 -> do
-        hpos' <- use hpos
-        pos1 .= hpos'
-       0x1b -> grp0 .= v
-       0x1c -> grp1 .= v
+       0x00 -> stellaVsync v    -- VSYNC
+       0x01 -> stellaVblank v   -- VBLANK
+       0x02 -> stellaWsync      -- WSYNC
+       0x04 -> nusiz0 .= v      -- NUSIZ0
+       0x05 -> nusiz1 .= v      -- NUSIZ1
+       0x06 -> colup0 .= v      -- COLUP0
+       0x07 -> colup1 .= v      -- COLUP1
+       0x08 -> colupf .= v      -- COLUPF
+       0x09 -> colubk .= v      -- COLUBK
+       0x0a -> ctrlpf .= v      -- COLUPF
+       0x0d -> pf0 .= v         -- PF0
+       0x0e -> pf1 .= v         -- PF1
+       0x0f -> pf2 .= v         -- PF2
+       0x10 -> use hpos >>= (pos0 .=)   -- RESP0
+       0x11 -> use hpos >>= (pos1 .=)   -- RESP1
+       0x1b -> grp0 .= v        -- GRP0
+       0x1c -> grp1 .= v        -- GRP1
+       0x1d -> enam0 .= v       -- ENAM0
+       0x1e -> enam1 .= v       -- ENAM1
+       0x20 -> hmp0 .= v        -- HMP0
+       0x21 -> hmp1 .= v        -- HMP1
+       0x2a -> stellaHmove      -- HMOVE
        otherwise -> return ()
         --liftIO $ putStrLn $ "writing TIA 0x" ++ showHex addr ""
 
@@ -301,9 +333,7 @@ instance Emu6502 MonadAtari where
     {-# INLINE readMemory #-}
     readMemory addr =
         if addr >= 0x00 && addr < 0x80
-            then do
-                --liftIO $ putStrLn $ "reading TIA 0x" ++ showHex addr ""
-                return 0
+            then usingStella $ readStella addr
             else if addr >= 0x80 && addr < 0x100 || addr >= 0x180 && addr < 0x200
                     then do
                         m <- use mem
@@ -314,8 +344,8 @@ instance Emu6502 MonadAtari where
                             then do
                                 m <- use mem
                                 liftIO $ readArray m (fromIntegral addr)
-                            else do
-                                error $ "Mystery read from " ++ showHex addr ""
+                            else return 0 --do
+                                --error $ "Mystery read from " ++ showHex addr ""
 
 
     {-# INLINE writeMemory #-}
