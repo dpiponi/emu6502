@@ -76,7 +76,7 @@ main = do
   --readBinary memory "exp.bin" 0xf000
   readBinary memory (file args) 0xf000
 
-  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0 0 0 0 0 0 0
+  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0 0 0 0 0 0 0 0 0 0 0 0
   let state = S { _mem = memory,  _clock = 0, _regs = R 0xf000 0 0 0 0 0xff,
                     _debug = False,
                     _stella = stella}
@@ -92,10 +92,10 @@ main = do
                     let pressed = isPressed motion
                     liftIO $ print sym
                     case keysymScancode sym of
-                        SDL.ScancodeDown -> usingStella $ swcha . bitAt 4 .= pressed
-                        SDL.ScancodeUp -> usingStella $ swcha . bitAt 5 .= pressed
-                        SDL.ScancodeRight -> usingStella $ swcha . bitAt 6 .= pressed
-                        SDL.ScancodeLeft -> usingStella $ swcha . bitAt 7 .= pressed
+                        SDL.ScancodeUp -> usingStella $ swcha . bitAt 4 .= not pressed
+                        SDL.ScancodeDown -> usingStella $ swcha . bitAt 5 .= not pressed
+                        SDL.ScancodeLeft -> usingStella $ swcha . bitAt 6 .= not pressed
+                        SDL.ScancodeRight -> usingStella $ swcha . bitAt 7 .= not pressed
                         SDL.ScancodeC -> usingStella $ swchb . bitAt 1 .= not pressed
                         SDL.ScancodeV -> usingStella $ swchb . bitAt 0 .= not pressed
                         SDL.ScancodeSpace -> usingStella $ do

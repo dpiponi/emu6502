@@ -48,13 +48,18 @@ data Stella = Stella {
     _grp1 :: !Word8,
     _swcha :: !Word8,
     _swchb :: !Word8,
-    _inpt4 :: !Word8,
     _enam0 :: !Word8,
     _enam1 :: !Word8,
     _hmp0 :: !Word8,
     _hmp1 :: !Word8,
     _nusiz0 :: !Word8,
-    _nusiz1 :: !Word8
+    _nusiz1 :: !Word8,
+    _inpt4 :: !Word8,
+    _cxm0p :: !Word8,
+    _cxm1p :: !Word8,
+    _cxp0fb :: !Word8,
+    _cxp1fb :: !Word8,
+    _cxppmm :: !Word8
 }
 
 $(makeLenses ''Stella)
