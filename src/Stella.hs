@@ -42,8 +42,8 @@ data Stella = Stella {
     _ctrlpf :: !Word8,
     _colup0 :: ! Word8,
     _colup1 :: !Word8,
-    _pos0 :: !CInt,
-    _pos1 :: !CInt,
+    _ppos0 :: !CInt,
+    _ppos1 :: !CInt,
     _grp0 :: !Word8,
     _grp1 :: !Word8,
     _swcha :: !Word8,
@@ -62,7 +62,10 @@ data Stella = Stella {
     _cxm0fb :: !Word8,
     _cxm1fb :: !Word8,
     _cxblpf :: !Word8,
-    _cxppmm :: !Word8
+    _cxppmm :: !Word8,
+    _enabl :: !Word8,
+    _mpos0 :: !CInt,
+    _mpos1 :: !CInt
 }
 
 $(makeLenses ''Stella)
@@ -82,76 +85,84 @@ playfield i | i >= 20 && i < 40 = do
                 ctrlpf' <- use ctrlpf
                 playfield $ if ctrlpf' .&. 0b00000001 > 0 then 39-i else i-20
 
--- Stella programmer's guide p.40
-{-# INLINABLE player0 #-}
-player0 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
-player0 i = do
-    hpos' <- use hpos
-    pos0' <- use pos0
-    let o = hpos'-pos0' :: CInt
-    sizeCopies <- (0b111 .&.) <$> use nusiz0
+{-# INLINABLE stretchPlayer #-}
+stretchPlayer :: Word8 -> CInt -> Word8 -> Bool
+stretchPlayer sizeCopies o grp0' =
     case sizeCopies of
         0b000 -> -- one copy
             if o >= 0 && o < 8
-                then do
-                    grp0' <- use grp0
-                    return $ (grp0' `shift` (fromIntegral o-7)) .&. 1 /= 0
-                else return False
+                then (grp0' `shift` (fromIntegral o-7)) .&. 1 /= 0
+                else False
         0b001 -> -- two copies close
             if o >= 0 && o < 8 || o >= 16 && o < 24
-                then do
-                    grp0' <- use grp0
-                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
-                else return False
+                then (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else False
         0b010 -> -- two copies - med
             if o >= 0 && o < 8 || o >= 32 && o < 40
-                then do
-                    grp0' <- use grp0
-                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
-                else return False
+                then (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else False
         0b011 -> -- three copies close
             if o >= 0 && o < 8 || o >= 16 && o < 24 || o >= 32 && o < 40
-                then do
-                    grp0' <- use grp0
-                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
-                else return False
+                then (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else False
         0b100 -> -- two copies wide
             if o >= 0 && o < 8 || o >= 64 && o < 72
-                then do
-                    grp0' <- use grp0
-                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
-                else return False
+                then (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else False
         0b101 -> -- double size player
             if o >= 0 && o < 16
-                then do
-                    grp0' <- use grp0
-                    return $ (grp0' `shift` ((fromIntegral o `shift` (-1))-7)) .&. 1 /= 0
-                else return False
+                then (grp0' `shift` ((fromIntegral o `shift` (-1))-7)) .&. 1 /= 0
+                else False
         0b110 -> -- three copies medium
             if o >= 0 && o < 8 || o >= 32 && o < 40 || o >= 64 && o < 72
-                then do
-                    grp0' <- use grp0
-                    return $ (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
-                else return False
+                then (grp0' `shift` (fromIntegral (o .&. 7)-7)) .&. 1 /= 0
+                else False
         0b111 -> -- quad sized player
             if o >= 0 && o < 32
-                then do
-                    grp0' <- use grp0
-                    return $ (grp0' `shift` ((fromIntegral o `shift` (-2))-7)) .&. 1 /= 0
-                else return False
+                then (grp0' `shift` ((fromIntegral o `shift` (-2))-7)) .&. 1 /= 0
+                else False
+
+-- Stella programmer's guide p.40
+{-# INLINABLE player0 #-}
+player0 :: (MonadIO m, MonadState Stella m) => m Bool
+player0 = do
+    hpos' <- use hpos
+    ppos0' <- use ppos0
+    let o = hpos'-ppos0' :: CInt
+    sizeCopies <- (0b111 .&.) <$> use nusiz0
+    grp0' <- use grp0
+    return $ stretchPlayer sizeCopies o grp0'
 
 {-# INLINABLE player1 #-}
-player1 :: (MonadIO m, MonadState Stella m) => Int -> m Bool
-player1 i = do
+player1 :: (MonadIO m, MonadState Stella m) => m Bool
+player1 = do
     hpos' <- use hpos
-    pos1' <- use pos1
-    let o = hpos'-pos1' :: CInt
-    if o >= 0 && o < 8
-        then do
-            grp1' <- use grp1
-            --when (o == 7) $ pos1 .= 9999
-            return $ (grp1' `shift` (fromIntegral o-7)) .&. 1 /= 0
-        else return False
+    ppos1' <- use ppos1
+    let o = hpos'-ppos1' :: CInt
+    sizeCopies <- (0b111 .&.) <$> use nusiz0
+    grp1' <- use grp1
+    return $ stretchPlayer sizeCopies o grp1'
+
+-- Stella programmer's guide p.22
+{-# INLINABLE missile0 #-}
+missile0 :: (MonadIO m, MonadState Stella m) => m Bool
+missile0 = do
+    hpos' <- use hpos
+    mpos1' <- use mpos1
+    let o = hpos'-mpos1' :: CInt
+    nusiz0' <- use nusiz0
+    let missileSize = 1 `shift` (fromIntegral ((nusiz0' `shift` (fromIntegral $ -4)) .&. 0b11))
+    return $ o >= 0 && o < missileSize
+
+{-# INLINABLE missile1 #-}
+missile1 :: (MonadIO m, MonadState Stella m) => m Bool
+missile1 = do
+    hpos' <- use hpos
+    mpos1' <- use mpos1
+    let o = hpos'-mpos1' :: CInt
+    nusiz1' <- use nusiz1
+    let missileSize = 1 `shift` (fromIntegral ((nusiz1' `shift` (fromIntegral $ -4)) .&. 0b11))
+    return $ o >= 0 && o < missileSize
 
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (160, 192)
@@ -176,14 +187,14 @@ stellaCxclr = do
 stellaHmove :: (MonadIO m, MonadState Stella m) => m ()
 stellaHmove = do
     offset <- use hmp0
-    pos0 -= clockMove offset
-    pos1 -= clockMove offset
+    ppos0 -= clockMove offset
+    ppos1 -= clockMove offset
 
 {-# INLINE stellaWsync #-}
 stellaWsync :: (MonadIO m, MonadState Stella m) => m ()
 stellaWsync = do
     hpos' <- use hpos
-    stellaIdle (228-fromIntegral hpos')
+    stellaTick (228-fromIntegral hpos')
 
 {-# INLINE stellaVsync #-}
 stellaVsync :: (MonadIO m, MonadState Stella m) => Word8 -> m ()
@@ -217,10 +228,9 @@ instance Monoid Pixel where
     _ `mappend` pixel@(Pixel True _) = pixel
     pixel `mappend` (Pixel False _) = pixel
 
-{-# INLINE stellaIdle #-}
-stellaIdle :: (MonadIO m, MonadState Stella m) => Int -> m ()
-stellaIdle 0 = return ()
-stellaIdle n = do
+stellaTick :: (MonadIO m, MonadState Stella m) => Int -> m ()
+stellaTick 0 = return ()
+stellaTick n = do
     hpos' <- use hpos
     vpos' <- use vpos
     when (vpos' >= picy && vpos' < picy+192 && hpos' >= picx) $ do
@@ -234,20 +244,27 @@ stellaIdle n = do
         -- Assemble colours
         pbackground <- Pixel True <$> use colubk
         pplayfield <- Pixel <$> playfield (fromIntegral $ x `shift` (-2)) <*> use colupf
-        pplayer0 <- Pixel <$> player0 (fromIntegral hpos') <*> use colup0
-        pplayer1 <- Pixel <$> player1 (fromIntegral hpos') <*> use colup1
+        pplayer0 <- Pixel <$> player0 <*> use colup0
+        pplayer1 <- Pixel <$> player1 <*> use colup1
+        pmissile0 <- Pixel <$> missile0 <*> use colup0
+        pmissile1 <- Pixel <$> missile1 <*> use colup1
 
         -- Collision detection
+        cxm0p . bitAt 7 ||= (plogic pmissile0 && plogic pplayer1)
+        cxm0p . bitAt 6 ||= (plogic pmissile0 && plogic pplayer0)
+        cxm1p . bitAt 7 ||= (plogic pmissile1 && plogic pplayer0)
+        cxm1p . bitAt 6 ||= (plogic pmissile1 && plogic pplayer1)
         cxp0fb . bitAt 7 ||= (plogic pplayer0 && plogic pplayfield)
         cxp1fb . bitAt 7 ||= (plogic pplayer1 && plogic pplayfield)
         cxppmm . bitAt 7 ||= (plogic pplayer0 && plogic pplayer1)
+        cxppmm . bitAt 6 ||= (plogic pmissile0 && plogic pmissile1)
         
         -- Get ordering priority
         ctrlpf' <- use ctrlpf
         let Pixel _ final = pbackground `mappend`
                             if ctrlpf' .&. 0b00000100 /= 0
-                                then pplayer1 `mappend` pplayer0 `mappend` pplayfield
-                                else pplayfield `mappend` pplayer1 `mappend` pplayer0
+                                then pplayer1 `mappend` pmissile1 `mappend` pplayer0 `mappend` pmissile0 `mappend` pplayfield
+                                else pplayfield `mappend` pplayer1 `mappend` pmissile1 `mappend` pplayer0 `mappend` pmissile0
 
         liftIO $ pokeElemOff ptr' (fromIntegral i) (lut!(final `shift` (-1)))
     hpos += 1
@@ -257,7 +274,7 @@ stellaIdle n = do
         vpos += 1
         vpos' <- use vpos
         when (vpos' >= picy+192) $ vpos .= 0
-    stellaIdle (n-1)
+    stellaTick (n-1)
 
 renderFrame :: (MonadIO m, MonadState Stella m) => m ()
 renderFrame = do
@@ -329,7 +346,7 @@ newtype MonadAtari a = M { unM :: StateT StateAtari IO a }
 {-# SPECIALIZE stellaWsync :: StateT Stella IO () #-}
 {-# SPECIALIZE stellaVsync :: Word8 -> StateT Stella IO () #-}
 {-# SPECIALIZE stellaVblank :: Word8 -> StateT Stella IO () #-}
-{-# SPECIALIZE stellaIdle :: Int -> StateT Stella IO () #-}
+{-# SPECIALIZE stellaTick :: Int -> StateT Stella IO () #-}
 
 vsync_addr :: Word16
 vsync_addr = 0x00
@@ -375,8 +392,8 @@ writeStella addr v =
        0x0d -> pf0 .= v         -- PF0
        0x0e -> pf1 .= v         -- PF1
        0x0f -> pf2 .= v         -- PF2
-       0x10 -> use hpos >>= (pos0 .=)   -- RESP0
-       0x11 -> use hpos >>= (pos1 .=)   -- RESP1
+       0x10 -> use hpos >>= (ppos0 .=)   -- RESP0
+       0x11 -> use hpos >>= (ppos1 .=)   -- RESP1
        0x1b -> grp0 .= v        -- GRP0
        0x1c -> grp1 .= v        -- GRP1
        0x1d -> enam0 .= v       -- ENAM0
@@ -475,7 +492,7 @@ instance Emu6502 MonadAtari where
     {-# INLINE tick #-}
     tick n = do
         clock += n
-        usingStella $ stellaIdle (3*n)
+        usingStella $ stellaTick (3*n)
     {-# INLINE putC #-}
     putC b = regs . flagC .= b
     {-# INLINE getC #-}
