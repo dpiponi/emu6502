@@ -27,7 +27,6 @@ import Data.Bits
 import Data.Bits.Lens
 
 data Stella = Stella {
-    _vclock :: !Int,
     _hpos :: !CInt,
     _vpos :: !CInt,
     _tvSurface :: !Surface,

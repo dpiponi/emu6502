@@ -77,14 +77,55 @@ main = do
   --readBinary memory "exp.bin" 0xf000
   readBinary memory (file args) 0xf000
 
-  let stella = Stella 0 0 0 helloWorld 0 0 0 0 0 0 0 0 0 0 0 9999 9999 0 0 0 0b00001011 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+  let stella = Stella {
+      _hpos = 0,
+      _vpos = 0,
+      _tvSurface = helloWorld,
+      _vblank = 0,
+      _vsync = 0,
+      _wsync = 0,
+      _colubk = 0,
+      _colupf = 0,
+      _pf0 = 0,
+      _pf1 = 0,
+      _pf2 = 0,
+      _ctrlpf = 0,
+      _colup0 = 0,
+      _colup1 = 0,
+      _ppos0 = 9999,
+      _ppos1 = 9999,
+      _grp0 = 0,
+      _grp1 = 0,
+      _swcha = 0,
+      _swchb = 0b00001011,
+      _enam0 = 0,
+      _enam1 = 0,
+      _hmp0 = 0,
+      _hmp1 = 0,
+      _nusiz0 = 0,
+      _nusiz1 = 0,
+      _inpt4 = 0,
+      _cxm0p = 0, _cxm1p = 0, _cxp0fb = 0, _cxp1fb = 0, _cxm0fb = 0, _cxm1fb = 0, _cxblpf = 0, _cxppmm = 0,
+      _enabl = 0,
+      _mpos0 = 0, _mpos1 = 0,
+      _bpos = 0,
+      _resmp0 = 0,
+      _resmp1 = 0,
+      _resbl = 0,
+      _hmm0 = 0,
+      _hmm1 = 0,
+      _hmbl = 0,
+      _inpt5 = 0,
+      _intim = 0,
+      _subtimer = 0,
+      _interval = 0
+  }
   let state = S { _mem = memory,  _clock = 0, _regs = R 0xf000 0 0 0 0 0xff,
                     _debug = False,
                     _stella = stella}
 
   let loop n = do
         liftIO $ lockSurface screenSurface
-
         forM_ [0..9] $ \_ -> do
             events <- liftIO $ SDL.pollEvents
 
