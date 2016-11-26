@@ -287,9 +287,9 @@ instance Monoid Pixel where
     _ `mappend` pixel@(Pixel True _) = pixel
     pixel `mappend` (Pixel False _) = pixel
 
-{-# INLINABLE detectCollisions #-}
-detectCollisions :: (MonadIO m, MonadState Stella m) => CInt -> m Word8
-detectCollisions x = do
+{-# INLINABLE compositeAndCollide #-}
+compositeAndCollide :: (MonadIO m, MonadState Stella m) => CInt -> m Word8
+compositeAndCollide x = do
     -- Assemble colours
     pbackground <- Pixel True <$> use colubk
     pplayfield <- Pixel <$> playfield (fromIntegral $ x `shift` (-2)) <*> use colupf
@@ -323,7 +323,6 @@ detectCollisions x = do
                             else mconcat [pball, pplayfield, pplayer1, pmissile1, pplayer0, pmissile0]
     return final
 
-{-# INLINABLE stellaTick #-}
 stellaTick :: (MonadIO m, MonadState Stella m) => Int -> m ()
 stellaTick 0 = return ()
 stellaTick n = do
@@ -352,7 +351,7 @@ stellaTick n = do
         let y = vpos'-picy
         let i = screenWidth*y+x
 
-        final <- detectCollisions x
+        final <- compositeAndCollide x
 
         liftIO $ pokeElemOff ptr' (fromIntegral i) (lut!(final `shift` (-1)))
     hpos += 1
@@ -492,6 +491,9 @@ writeStella addr v =
        0x1f -> (liftIO $ putStrLn $ "ENABL="++showHex v "") >> enabl .= v                -- ENABL
        0x20 -> hmp0 .= v                 -- HMP0
        0x21 -> hmp1 .= v                 -- HMP1
+       0x22 -> hmm0 .= v                 -- HMM0
+       0x23 -> hmm1 .= v                 -- HMM1
+       0x24 -> hmbl .= v                 -- HMBL
        0x28 -> do
         resmp0' <- use (resmp0 . bitAt 1)
         when (resmp0') $ use ppos0 >>= (mpos0 .=)  -- RESMP0

@@ -83,38 +83,41 @@ main = do
                     _stella = stella}
 
   let loop n = do
-        events <- liftIO $ SDL.pollEvents
-
-        let quit = elem SDL.QuitEvent $ map SDL.eventPayload events
-
-        forM_ events $ \event ->
-            case eventPayload event of
-                KeyboardEvent (KeyboardEventData win motion rep sym) -> do
-                    let pressed = isPressed motion
-                    --liftIO $ print sym
-                    case keysymScancode sym of
-                        SDL.ScancodeUp -> usingStella $ swcha . bitAt 4 .= not pressed
-                        SDL.ScancodeDown -> usingStella $ swcha . bitAt 5 .= not pressed
-                        SDL.ScancodeLeft -> usingStella $ swcha . bitAt 6 .= not pressed
-                        SDL.ScancodeRight -> usingStella $ swcha . bitAt 7 .= not pressed
-                        SDL.ScancodeC -> usingStella $ swchb . bitAt 1 .= not pressed
-                        SDL.ScancodeV -> usingStella $ swchb . bitAt 0 .= not pressed
-                        SDL.ScancodeSpace -> usingStella $ do
-                            latch <- use (vblank . bitAt 6)
-                            liftIO $ putStrLn $ "Latch = " ++ show (latch, pressed)
-                            case (latch, pressed) of
-                                (False, _) -> inpt4 . bitAt 7 .= not pressed
-                                (True, False) -> return ()
-                                (True, True) -> inpt4 . bitAt 7 .= False
-                otherwise -> return ()
-
         liftIO $ lockSurface screenSurface
+
+        forM_ [0..9] $ \_ -> do
+            events <- liftIO $ SDL.pollEvents
+
+            let quit = elem SDL.QuitEvent $ map SDL.eventPayload events
+
+            forM_ events $ \event ->
+                case eventPayload event of
+                    KeyboardEvent (KeyboardEventData win motion rep sym) -> do
+                        let pressed = isPressed motion
+                        --liftIO $ print sym
+                        case keysymScancode sym of
+                            SDL.ScancodeUp -> usingStella $ swcha . bitAt 4 .= not pressed
+                            SDL.ScancodeDown -> usingStella $ swcha . bitAt 5 .= not pressed
+                            SDL.ScancodeLeft -> usingStella $ swcha . bitAt 6 .= not pressed
+                            SDL.ScancodeRight -> usingStella $ swcha . bitAt 7 .= not pressed
+                            SDL.ScancodeC -> usingStella $ swchb . bitAt 1 .= not pressed
+                            SDL.ScancodeV -> usingStella $ swchb . bitAt 0 .= not pressed
+                            SDL.ScancodeSpace -> usingStella $ do
+                                latch <- use (vblank . bitAt 6)
+                                liftIO $ putStrLn $ "Latch = " ++ show (latch, pressed)
+                                case (latch, pressed) of
+                                    (False, _) -> inpt4 . bitAt 7 .= not pressed
+                                    (True, False) -> return ()
+                                    (True, True) -> inpt4 . bitAt 7 .= False
+                    otherwise -> return ()
+
         unM $ times 10000 step
+
         liftIO $ unlockSurface screenSurface
 
         liftIO $ SDL.surfaceBlitScaled helloWorld Nothing screenSurface (Just (Rectangle (P (V2 0 0)) (V2 (screenWidth*scale) (screenHeight*scale))))
         liftIO $ SDL.updateWindowSurface window
-        unless quit $ loop (n+1)
+        unless False $ loop (n+1) -- XXX
 
   flip runStateT state $ loop 0
 
