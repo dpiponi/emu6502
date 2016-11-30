@@ -27,6 +27,7 @@ import Data.Bits
 import Data.Bits.Lens
 
 data Stella = Stella {
+    _stellaClock :: !Int64,
     _hpos :: !CInt,
     _vpos :: !CInt,
     _tvSurface :: !Surface,
@@ -282,6 +283,7 @@ picx = 68
 data Pixel = Pixel { plogic :: !Bool, pcolor :: !Word8 }
 
 instance Monoid Pixel where
+    {-# INLINE mappend #-}
     mempty = Pixel False 0
     _ `mappend` pixel@(Pixel True _) = pixel
     pixel `mappend` (Pixel False _) = pixel
@@ -326,6 +328,7 @@ stellaTick :: (MonadIO m, MonadState Stella m) => Int -> m ()
 stellaTick 0 = return ()
 stellaTick n = do
     -- Interval timer
+    stellaClock += 1
     subtimer' <- use subtimer
     let subtimer'' = subtimer'-1
     subtimer .= subtimer''

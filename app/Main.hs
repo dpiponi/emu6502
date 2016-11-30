@@ -24,8 +24,8 @@ import Core
 import Binary
 import Intel hiding (hexWord16, fromHex)
 --import VirtualBBC
---import Vanilla
-import Atari
+import Vanilla
+--import Atari
 
 data Args = Args { verbose :: Bool,
                    file :: String,
