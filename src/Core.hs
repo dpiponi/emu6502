@@ -195,6 +195,17 @@ writeZeroPageX src = do
     putPC $ p0+1
     tick 4
 
+{-# INLINABLE writeZeroPageY #-}
+writeZeroPageY :: Emu6502 m => Word8 -> m ()
+writeZeroPageY src = do
+    --incPC
+    p0 <- getPC
+    offsetY <- getY
+    zpAddr <- readMemory p0
+    writeMemory (i16 $ zpAddr+offsetY) src
+    putPC $ p0+1
+    tick 4
+
 {-# INLINABLE writeAbsoluteY #-}
 writeAbsoluteY :: Emu6502 m => Word8 -> m ()
 writeAbsoluteY src = do
@@ -216,20 +227,6 @@ writeAbsoluteX src = do
     writeMemory (baseAddr+i16 offsetX) src
     putPC $ p0+2
     tick 5
-
-{-# INLINABLE putData #-}
-putData :: Emu6502 m => Word8 -> Word8 -> m ()
-putData bbb src = do
-    p0 <- getPC
-    case bbb of
-        0b000 -> writeIndirectX src -- (zero page, X)
-        0b001 -> writeZeroPage src
-        0b010 -> readMemory p0 >>= illegal -- XXX imm. check in caller
-        0b011 -> writeAbsolute src
-        0b100 -> writeIndirectY src -- (zero page), Y
-        0b101 -> writeZeroPageX src
-        0b110 -> writeAbsoluteY src
-        0b111 -> writeAbsoluteX src
 
 {-# INLINABLE readIndirectX #-}
 readIndirectX :: Emu6502 m => m Word8
@@ -341,19 +338,6 @@ readAbsoluteY = do
     putPC $ p0+2
     tick $ if carry then 5 else 4
     return src
-
-{-# INLINABLE getData #-}
-getData :: Emu6502 m => Word8 -> m Word8
-getData bbb = do
-    case bbb of
-        0b000 -> readIndirectX
-        0b001 -> readZeroPage
-        0b010 -> readImmediate
-        0b011 -> readAbsolute
-        0b100 -> readIndirectY
-        0b101 -> readZeroPageX
-        0b110 -> readAbsoluteY
-        0b111 -> readAbsoluteX
 
 {-# INLINABLE ins_bra #-}
 ins_bra :: Emu6502 m => m Bool -> Bool -> m ()
@@ -488,21 +472,18 @@ withAbsoluteY op = do
     writeMemory addr dst
     tick 7
 
--- Need to separate R and (RW/W) XXX XXX XXX
-{-# INLINABLE withData02 #-}
-withData02 :: Emu6502 m =>
-              Word8 -> Bool ->
-              (Word8 -> m Word8) ->
-              m ()
-withData02 bbb useY op = case bbb of
-    0b000 -> getPC >>= readMemory >>= illegal -- XXX reread mem. Should check in caller.
-    0b001 -> withZeroPage op
-    0b010 -> withAccumulator op
-    0b011 -> withAbsolute op
-    0b101 -> if useY then withZeroPageY op else withZeroPageX op
-    0b111 -> if useY then withAbsoluteY op else withAbsoluteX op
-
-    otherwise -> error "Unknown addressing mode"
+{-# INLINABLE getData01 #-}
+getData01 :: Emu6502 m => Word8 -> m Word8
+getData01 bbb = do
+    case bbb of
+        0b000 -> readIndirectX
+        0b001 -> readZeroPage
+        0b010 -> readImmediate
+        0b011 -> readAbsolute
+        0b100 -> readIndirectY
+        0b101 -> readZeroPageX
+        0b110 -> readAbsoluteY
+        0b111 -> readAbsoluteX
 
 {-# INLINABLE getData02 #-}
 getData02 :: Emu6502 m =>
@@ -523,6 +504,48 @@ getData02 bbb useY op = case bbb of
 
     otherwise -> error "Unknown addressing mode"
 
+-- Need to separate W and (RW/R) XXX XXX XXX
+{-# INLINABLE withData02 #-}
+withData02 :: Emu6502 m =>
+              Word8 -> Bool ->
+              (Word8 -> m Word8) ->
+              m ()
+withData02 bbb useY op = case bbb of
+    0b000 -> getPC >>= readMemory >>= illegal -- XXX reread mem. Should check in caller.
+    0b001 -> withZeroPage op
+    0b010 -> withAccumulator op
+    0b011 -> withAbsolute op
+    0b101 -> if useY then withZeroPageY op else withZeroPageX op
+    0b111 -> if useY then withAbsoluteY op else withAbsoluteX op
+
+    otherwise -> error "Unknown addressing mode"
+
+{-# INLINABLE putData02 #-}
+putData02 :: Emu6502 m => Word8 -> Bool -> Word8 -> m ()
+putData02 bbb useY src = case bbb of
+    0b000 -> error "No write immediate"
+    0b001 -> writeZeroPage src
+    0b010 -> error "No write accumulator"
+    0b011 -> writeAbsolute src
+    0b101 -> if useY then writeZeroPageY src else writeZeroPageX src
+    0b111 -> if useY then writeAbsoluteY src else writeAbsoluteX src
+
+    otherwise -> error "Unknown addressing mode"
+
+{-# INLINABLE putData01 #-}
+putData01 :: Emu6502 m => Word8 -> Word8 -> m ()
+putData01 bbb src = do
+    p0 <- getPC
+    case bbb of
+        0b000 -> writeIndirectX src -- (zero page, X)
+        0b001 -> writeZeroPage src
+        0b010 -> readMemory p0 >>= illegal -- XXX imm. check in caller
+        0b011 -> writeAbsolute src
+        0b100 -> writeIndirectY src -- (zero page), Y
+        0b101 -> writeZeroPageX src
+        0b110 -> writeAbsoluteY src
+        0b111 -> writeAbsoluteX src
+
 {-# INLINABLE setN #-}
 setN :: Emu6502 m => Word8 -> m ()
 setN r = putN $ r >= 0x80
@@ -542,7 +565,7 @@ setNZ_ r = setN r >> setZ r
 {-# INLINABLE op_ora #-}
 op_ora :: Emu6502 m => Word8 -> m ()
 op_ora bbb = do
-    src <- getData bbb
+    src <- getData01 bbb
     oldA <- getA
     let newA = oldA .|. src
     putA newA
@@ -551,13 +574,13 @@ op_ora bbb = do
 {-# INLINABLE op_and #-}
 op_and :: Emu6502 m => Word8 -> m ()
 op_and bbb = do
-    src <- getData bbb
+    src <- getData01 bbb
     getA >>= setNZ . (src .&.) >>= putA
 
 {-# INLINABLE op_xor #-}
 op_xor :: Emu6502 m => Word8 -> m ()
 op_xor bbb = do
-    src <- getData bbb
+    src <- getData01 bbb
     oldA <- getA
     let newA = oldA `xor` src
     putA newA
@@ -567,16 +590,16 @@ op_xor bbb = do
 {-# INLINABLE op_lda #-}
 op_lda :: Emu6502 m => Word8 -> m ()
 op_lda bbb = do
-    getData bbb >>= setNZ >>= putA
+    getData01 bbb >>= setNZ >>= putA
 
 {-# INLINABLE op_sta #-}
 op_sta :: Emu6502 m => Word8 -> m ()
-op_sta bbb = getA >>= putData bbb
+op_sta bbb = getA >>= putData01 bbb
 
 {-# INLINABLE op_adc #-}
 op_adc :: Emu6502 m => Word8 -> m ()
 op_adc bbb = do
-    src <- getData bbb
+    src <- getData01 bbb
     oldA <- getA
     carry <- getC
     let newA = fromIntegral oldA+fromIntegral src+if carry then 1 else 0 :: Word16
@@ -601,7 +624,7 @@ op_adc bbb = do
 {-# INLINABLE op_sbc #-}
 op_sbc :: Emu6502 m => Word8 -> m ()
 op_sbc bbb = do
-    src <- getData bbb
+    src <- getData01 bbb
     oldA <- getA
     carry <- getC
     let newA = fromIntegral oldA-fromIntegral src-if carry then 0 else 1 :: Word16
@@ -628,7 +651,7 @@ op_sbc bbb = do
 {-# INLINABLE op_cmp #-}
 op_cmp :: Emu6502 m => Word8 -> m ()
 op_cmp bbb = do
-    src <- getData bbb
+    src <- getData01 bbb
     oldA <- getA
     let new = i16 oldA-i16 src
     putC $ new < 0x100
