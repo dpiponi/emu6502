@@ -144,7 +144,7 @@ iz = fromIntegral
 {-# INLINABLE writeIndirectX #-}
 writeIndirectX :: Emu6502 m => Word8 -> m ()
 writeIndirectX src = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetX <- getX
     zpAddr <- readMemory p0
@@ -156,7 +156,7 @@ writeIndirectX src = do
 {-# INLINABLE writeZeroPage #-}
 writeZeroPage :: Emu6502 m => Word8 -> m ()
 writeZeroPage src = do
-    --incPC
+    incPC
     p0 <- getPC
     addr <- readMemory p0
     writeMemory (i16 addr) src
@@ -166,7 +166,7 @@ writeZeroPage src = do
 {-# INLINABLE writeAbsolute #-}
 writeAbsolute :: Emu6502 m => Word8 -> m()
 writeAbsolute src = do
-    --incPC
+    incPC
     p0 <- getPC
     addr <- read16 p0
     writeMemory addr src
@@ -176,7 +176,7 @@ writeAbsolute src = do
 {-# INLINABLE writeIndirectY #-}
 writeIndirectY :: Emu6502 m => Word8 -> m ()
 writeIndirectY src = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetY <- getY
     addr <- readMemory p0 >>= read16zp
@@ -187,7 +187,7 @@ writeIndirectY src = do
 {-# INLINABLE writeZeroPageX #-}
 writeZeroPageX :: Emu6502 m => Word8 -> m ()
 writeZeroPageX src = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetX <- getX
     zpAddr <- readMemory p0
@@ -198,7 +198,7 @@ writeZeroPageX src = do
 {-# INLINABLE writeAbsoluteY #-}
 writeAbsoluteY :: Emu6502 m => Word8 -> m ()
 writeAbsoluteY src = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetY <- getY
     baseAddr <- read16 p0
@@ -209,7 +209,7 @@ writeAbsoluteY src = do
 {-# INLINABLE writeAbsoluteX #-}
 writeAbsoluteX :: Emu6502 m => Word8 -> m ()
 writeAbsoluteX src = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetX <- getX
     baseAddr <- read16 p0
@@ -234,7 +234,7 @@ putData bbb src = do
 {-# INLINABLE readIndirectX #-}
 readIndirectX :: Emu6502 m => m Word8
 readIndirectX = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetX <- getX
     zpAddr <- readMemory p0
@@ -248,7 +248,7 @@ readIndirectX = do
 {-# INLINABLE readZeroPage #-}
 readZeroPage :: Emu6502 m => m Word8
 readZeroPage = do
-    --incPC
+    incPC
     p0 <- getPC
     addr <- readMemory p0
     src <- readMemory (i16 addr)
@@ -259,7 +259,7 @@ readZeroPage = do
 {-# INLINABLE readImmediate #-}
 readImmediate :: Emu6502 m => m Word8
 readImmediate = do
-    --incPC
+    incPC
     p0 <- getPC
     src <- readMemory p0
     putPC $ p0+1
@@ -269,7 +269,7 @@ readImmediate = do
 {-# INLINABLE readAbsolute #-}
 readAbsolute :: Emu6502 m => m Word8
 readAbsolute = do
-    --incPC
+    incPC
     p0 <- getPC
     src <- read16 p0 >>= readMemory
     putPC $ p0+2
@@ -279,7 +279,7 @@ readAbsolute = do
 {-# INLINABLE readIndirectY #-}
 readIndirectY :: Emu6502 m => m Word8
 readIndirectY = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetY <- getY
     addr <- readMemory p0 >>= read16zp
@@ -293,7 +293,7 @@ readIndirectY = do
 {-# INLINABLE readZeroPageX #-}
 readZeroPageX :: Emu6502 m => m Word8
 readZeroPageX = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetX <- getX
     zpAddr <- readMemory p0
@@ -305,7 +305,7 @@ readZeroPageX = do
 {-# INLINABLE readZeroPageY #-}
 readZeroPageY :: Emu6502 m => m Word8
 readZeroPageY = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetY <- getY
     zpAddr <- readMemory p0
@@ -317,7 +317,7 @@ readZeroPageY = do
 {-# INLINABLE readAbsoluteX #-}
 readAbsoluteX :: Emu6502 m => m Word8
 readAbsoluteX = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetX <- getX
     baseAddr <- read16 p0
@@ -331,7 +331,7 @@ readAbsoluteX = do
 {-# INLINABLE readAbsoluteY #-}
 readAbsoluteY :: Emu6502 m => m Word8
 readAbsoluteY = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetY <- getY
     baseAddr <- read16 p0
@@ -359,7 +359,7 @@ getData bbb = do
 {-# INLINABLE ins_bra #-}
 ins_bra :: Emu6502 m => m Bool -> Bool -> m ()
 ins_bra getFlag value = do
-    --incPC
+    incPC
     f <- getFlag
     p0 <- getPC
     let oldP = p0+1
@@ -378,22 +378,19 @@ ins_bra getFlag value = do
 {-# INLINABLE ins_set #-}
 ins_set :: Emu6502 m => (Bool -> m ()) -> Bool -> m ()
 ins_set putFlag value = do
-    --incPC
+    incPC
     putFlag value
     getPC >>= putPC
     tick 2
 
 {-# INLINABLE ins_nop #-}
 ins_nop :: Emu6502 m => m ()
-ins_nop = do
-    --incPC
-    tick 2
-
+ins_nop = incPC >> tick 2
 
 {-# INLINABLE ins_jmp #-}
 ins_jmp :: Emu6502 m => m ()
 ins_jmp = do
-    --incPC
+    incPC
     addr <- getPC >>= read16
     putPC addr
     tick 3
@@ -406,13 +403,13 @@ nonwhite ra = "'" ++ [BS.w2c ra] ++ "'"
 {-# INLINABLE ins_jmp_indirect #-}
 ins_jmp_indirect :: Emu6502 m => m ()
 ins_jmp_indirect = do
-    --incPC
+    incPC
     getPC >>= read16 >>= read16 >>= putPC
     tick 5
 
 withZeroPage :: Emu6502 m => (Word8 -> m Word8) -> m ()
 withZeroPage op = do
-    --incPC
+    incPC
     p0 <- getPC
     addr <- readMemory p0
     readMemory (i16 addr) >>= op >>= writeMemory (i16 addr)
@@ -421,14 +418,14 @@ withZeroPage op = do
 
 withAccumulator :: Emu6502 m => (Word8 -> m Word8) -> m ()
 withAccumulator op = do
-    --incPC
+    incPC
     p0 <- getPC
     getA >>= op >>= putA
     tick 2
 
 withAbsolute :: Emu6502 m => (Word8 -> m Word8) -> m ()
 withAbsolute op = do
-    --incPC
+    incPC
     p0 <- getPC
     addr <- read16 p0
     dst <- readMemory addr >>= op
@@ -438,7 +435,7 @@ withAbsolute op = do
 
 withZeroPageX :: Emu6502 m => (Word8 -> m Word8) -> m ()
 withZeroPageX op = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetX <- getX
     zpAddr <- readMemory p0
@@ -451,7 +448,7 @@ withZeroPageX op = do
 
 withZeroPageY :: Emu6502 m => (Word8 -> m Word8) -> m ()
 withZeroPageY op = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetY <- getY
     zpAddr <- readMemory p0
@@ -464,7 +461,7 @@ withZeroPageY op = do
 
 withAbsoluteX :: Emu6502 m => (Word8 -> m Word8) -> m ()
 withAbsoluteX op = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetX <- getX
     baseAddr <- read16 p0
@@ -478,7 +475,7 @@ withAbsoluteX op = do
 
 withAbsoluteY :: Emu6502 m => (Word8 -> m Word8) -> m ()
 withAbsoluteY op = do
-    --incPC
+    incPC
     p0 <- getPC
     offsetY <- getY
     baseAddr <- read16 p0
@@ -724,7 +721,7 @@ op_cpy bbb = getData02 bbb False $ \src -> do
 {-# INLINABLE ins_txs #-}
 ins_txs :: Emu6502 m => m ()
 ins_txs = do
-    --incPC
+    incPC
     getX >>= putS
     tick 2
 
@@ -733,37 +730,36 @@ ins_transfer :: Emu6502 m =>
                      m Word8 -> (Word8 -> m ()) ->
                      m ()
 ins_transfer getReg putReg = do
-    --incPC
+    incPC
     v0 <- getReg
     putReg v0
     setNZ v0
     tick 2
 
-{-# INLINABLE ins_incr #-}
-ins_incr :: Emu6502 m => m Word8 -> (Word8 -> m ()) -> m ()
-ins_incr getReg putReg = do
-    --incPC
+{-# INLINABLE op_incr #-}
+op_incr :: Emu6502 m => m Word8 -> (Word8 -> m ()) -> m ()
+op_incr getReg putReg = do
     v0 <- getReg
     let v1 = v0+1
     setNZ v1
     putReg v1
+    addPC 1
     tick 2
 
-{-# INLINABLE ins_decr #-}
-ins_decr :: Emu6502 m => m Word8 -> (Word8 -> m ()) -> m ()
-ins_decr getReg putReg = do
-    --incPC
+{-# INLINABLE op_decr #-}
+op_decr :: Emu6502 m => m Word8 -> (Word8 -> m ()) -> m ()
+op_decr getReg putReg = do
     v0 <- getReg
     let v1 = v0-1
     setNZ v1
     putReg v1
+    addPC 1
     tick 2
 
 {-# INLINABLE ins_brk #-}
 ins_brk :: Emu6502 m => m ()
 ins_brk = do
-    --incPC
-    incPC
+    addPC 2
     putB True
     nmi True
 
@@ -794,28 +790,28 @@ pull = do
 {-# INLINABLE ins_pha #-}
 ins_pha ::Emu6502 m => m ()
 ins_pha = do
-    --incPC
+    incPC
     getA >>= push
     tick 3
 
 {-# INLINABLE ins_php #-}
 ins_php :: Emu6502 m => m ()
 ins_php = do
-    --incPC
+    incPC
     getP >>= push . (.|. 0x30)
     tick 3
 
 {-# INLINABLE ins_plp #-}
 ins_plp :: Emu6502 m => m ()
 ins_plp = do
-    --incPC
+    incPC
     pull >>= putP
     tick 4
 
 {-# INLINABLE ins_pla #-}
 ins_pla :: Emu6502 m => m ()
 ins_pla = do
-    --incPC
+    incPC
     v0 <- pull
     putA v0
     setNZ v0
@@ -844,7 +840,7 @@ nmi sw = do
 {-# INLINABLE ins_rti #-}
 ins_rti :: Emu6502 m => m ()
 ins_rti = do
-    --incPC
+    incPC
     pull >>= putP
     make16 <$> pull <*> pull >>= putPC
     tick 6
@@ -853,7 +849,7 @@ ins_rti = do
 {-# INLINABLE ins_jsr #-}
 ins_jsr :: Emu6502 m => m ()
 ins_jsr = do
-    --incPC
+    incPC
     p0 <- getPC
     getPC >>= read16 >>= putPC
     let p2 = p0+1
@@ -864,7 +860,6 @@ ins_jsr = do
 {-# INLINABLE ins_rts #-}
 ins_rts :: Emu6502 m => m ()
 ins_rts = do
-    --incPC
     make16 <$> pull <*> pull >>= putPC . (+1)
     tick 6
 
@@ -880,7 +875,6 @@ step = do
     debugStrLn $ "pc = " ++ showHex p0 ""
     i <- readMemory p0
     debugStrLn $ "instruction = " ++ showHex i ""
-    incPC
     case i of
         0x00 -> ins_brk
         0x08 -> ins_php
@@ -898,7 +892,7 @@ step = do
         0x68 -> ins_pla
         0x70 -> ins_bra getV True
         0x78 -> ins_set putI True
-        0x88 -> ins_decr getY putY
+        0x88 -> op_decr getY putY
         0x8a -> ins_transfer getX putA
         0x90 -> ins_bra getC False
         0x98 -> ins_transfer getY putA
@@ -908,11 +902,11 @@ step = do
         0xb0 -> ins_bra getC True
         0xb8 -> ins_set putV False
         0xba -> ins_transfer getS putX
-        0xc8 -> ins_incr getY putY
-        0xca -> ins_decr getX putX
+        0xc8 -> op_incr getY putY
+        0xca -> op_decr getX putX
         0xd0 -> ins_bra getZ False
         0xd8 -> ins_set putD False
-        0xe8 -> ins_incr getX putX
+        0xe8 -> op_incr getX putX
         0xea -> ins_nop
         0xf0 -> ins_bra getZ True
         0xf8 -> ins_set putD True
