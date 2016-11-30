@@ -385,7 +385,9 @@ ins_set putFlag value = do
 
 {-# INLINABLE ins_nop #-}
 ins_nop :: Emu6502 m => m ()
-ins_nop = incPC >> tick 2
+ins_nop = do
+    incPC
+    tick 2
 
 {-# INLINABLE ins_jmp #-}
 ins_jmp :: Emu6502 m => m ()
@@ -739,27 +741,28 @@ ins_transfer getReg putReg = do
 {-# INLINABLE op_incr #-}
 op_incr :: Emu6502 m => m Word8 -> (Word8 -> m ()) -> m ()
 op_incr getReg putReg = do
+    incPC
     v0 <- getReg
     let v1 = v0+1
     setNZ v1
     putReg v1
-    addPC 1
     tick 2
 
 {-# INLINABLE op_decr #-}
 op_decr :: Emu6502 m => m Word8 -> (Word8 -> m ()) -> m ()
 op_decr getReg putReg = do
+    incPC
     v0 <- getReg
     let v1 = v0-1
     setNZ v1
     putReg v1
-    addPC 1
     tick 2
 
 {-# INLINABLE ins_brk #-}
 ins_brk :: Emu6502 m => m ()
 ins_brk = do
-    addPC 2
+    incPC
+    incPC
     putB True
     nmi True
 
@@ -860,6 +863,7 @@ ins_jsr = do
 {-# INLINABLE ins_rts #-}
 ins_rts :: Emu6502 m => m ()
 ins_rts = do
+    incPC
     make16 <$> pull <*> pull >>= putPC . (+1)
     tick 6
 
