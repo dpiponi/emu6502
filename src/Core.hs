@@ -690,9 +690,9 @@ op_ror bbb = withData02 bbb False $ \src -> do
     let new = (src `shift` (-1))+if fc then 0x80 else 0x00
     setNZ new
 
-{-# INLINABLE op_stx #-}
-op_stx :: Emu6502 m => Word8 -> m ()
-op_stx bbb = withData02 bbb True $ \_ -> getX
+{-# INLINABLE ins_stx #-}
+ins_stx :: Emu6502 m => Word8 -> m ()
+ins_stx bbb = getX >>= putData02 bbb True
 
 {-# INLINABLE op_ldx #-}
 op_ldx :: Emu6502 m => Word8 -> m ()
@@ -716,9 +716,9 @@ op_bit bbb = getData02 bbb False $ \src -> do
     putV $ src .&. 0x40 > 0
     setZ $ ra .&. src
 
-{-# INLINABLE op_sty #-}
-op_sty :: Emu6502 m => Word8 -> m ()
-op_sty bbb = withData02 bbb False $ \_ -> getY
+{-# INLINABLE ins_sty #-}
+ins_sty :: Emu6502 m => Word8 -> m ()
+ins_sty bbb = getY >>= putData02 bbb False
 
 {-# INLINABLE op_ldy #-}
 op_ldy :: Emu6502 m => Word8 -> m ()
@@ -949,7 +949,7 @@ step = do
                         0b001 -> op_bit bbb
                         0b010 -> ins_jmp
                         0b011 -> ins_jmp_indirect
-                        0b100 -> op_sty bbb
+                        0b100 -> ins_sty bbb
                         0b101 -> op_ldy bbb
                         0b110 -> op_cpy bbb
                         0b111 -> op_cpx bbb
@@ -980,7 +980,7 @@ step = do
                         0b001 -> op_rol bbb
                         0b010 -> op_lsr bbb
                         0b011 -> op_ror bbb
-                        0b100 -> op_stx bbb
+                        0b100 -> ins_stx bbb
                         0b101 -> op_ldx bbb
                         0b110 -> op_dec bbb
                         0b111 -> op_inc bbb
